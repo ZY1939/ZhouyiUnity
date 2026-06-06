@@ -1,0 +1,42 @@
+{
+  "ai": {
+    "active_provider": "deepseek",
+    "providers": {
+      "lmstudio": {
+        "base_url": "http://localhost:1234/v1",
+        "model": "qwen/qwen3.6-35b-a3b",
+        "timeout": 120
+      },
+      "deepseek": {
+        "api_key": "sk-c59ab974a90c4eb1aedae58f6cc2979a",
+        "base_url": "https://api.deepseek.com",
+        "model": "deepseek-v4-flash",
+        "timeout": 30
+      },
+      "custom": {
+        "timeout": 60
+      }
+    }
+  },
+  "appearance": {
+    "background_color": "#87b3b4",
+    "background_image": "",
+    "font_family": "PingFang SC",
+    "font_size": 16,
+    "line_spacing": 1.5,
+    "background_image_mode": "fill",
+    "background_image_opacity": 30
+  },
+  "solar_time": {
+    "enabled": true,
+    "auto_locate": true,
+    "city_name": "China Zhejiang Hangzhou",
+    "longitude": 120.1663,
+    "latitude": 30.2943,
+    "use_in_bazi": true,
+    "show_in_statusbar": true
+  },
+  "general": {
+    "last_tab_index": 4
+  }
+}

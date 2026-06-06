@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#333333" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+  <!-- 调色板/外观图标 — 用于背景与字体 -->
+  <circle cx="12" cy="12" r="10"/>
+  <path d="M12 2a10 10 0 0 0 0 20"/>
+  <path d="M12 2a10 10 0 0 1 0 20"/>
+  <circle cx="8.5" cy="8.5" r="1.5" fill="#007aff" stroke="none"/>
+  <circle cx="15.5" cy="7" r="1.5" fill="#34c759" stroke="none"/>
+  <circle cx="7" cy="14" r="1.5" fill="#ff9500" stroke="none"/>
+  <circle cx="16" cy="14.5" r="1.5" fill="#ff3b30" stroke="none"/>
+  <circle cx="11" cy="17.5" r="1.5" fill="#af52de" stroke="none"/>
+</svg>
