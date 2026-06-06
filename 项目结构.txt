@@ -1,0 +1,92 @@
+ZhouyiUnity 项目结构
+====================
+
+周易算命软件 - PySide6 多窗口桌面应用
+
+──────── 根目录文件 ────────
+
+main.py                    程序入口，全局字体 16px
+CLAUDE.md                  Claude Code 工程说明（AI 自动加载）
+ZhouyiUnity.spec           PyInstaller 跨平台打包配置
+.gitignore                 忽略 build/ dist/ __pycache__ 等
+项目结构.txt                本文件
+
+启动全部.command            一键启动：VS Code + Qt Designer（后台）+ Claude（前台）
+启动/                     启动脚本目录
+  ├── Claude-启动.command      双击启动 Claude Code（YOLO 模式）
+  ├── Vscode启动.command       双击启动 VS Code
+  └── QtDesigner-启动.command  双击启动 Qt Designer
+
+──────── 目录说明 ────────
+
+ui/                   界面文件（Qt Designer 设计后放这里）
+  └── zhouyiUnity.ui    主窗口 .ui 文件
+
+src/                  源代码
+  ├── main_window.py    主窗口逻辑：Tab 容器 + 菜单栏 + 状态栏
+  │
+  ├── tabs/             主窗口的各个 Tab 页
+  │   ├── yijing_viewer.py    易经查看器 — 浏览 64 卦辞
+  │   ├── qigua.py            起卦功能 — 手动/随机起卦
+  │   ├── bazhai.py           八字 — 用户列表，点击弹出新窗口排盘
+  │   └── case_manager.py     起卦案例管理器 — 增删查改
+  │
+  ├── windows/          独立弹窗（多窗口模式）
+  │   └── bazhai_window.py    八字排盘详情窗口
+  │
+  ├── data/             查找表 / 参考数据（静态知识库）
+  │   ├── calendar/          万年历（农历转换、节气）
+  │   ├── yijing/            64 卦象、卦辞、爻辞
+  │   ├── bazi/              天干地支、五行、十神、纳音
+  │   └── ziwei/             紫微斗数：安星法速查表、星曜属性
+  │
+  ├── algorithms/       核心算法（纯计算，不涉及 UI）
+  │   ├── time_convert.py    公历 ↔ 农历转换
+  │   ├── bazhai_pan.py      八字排盘（生辰 → 四柱）
+  │   ├── qigua_calc.py      起卦算法（蓍草/金钱卦/时间卦）
+  │   └── ziwei_pan.py       紫微斗数排盘
+  │
+  ├── models/           数据模型（数据结构定义）
+  │   ├── user.py            用户档案：姓名、生辰、性别
+  │   ├── gua.py             卦象模型：本卦、变卦、爻变
+  │   └── case.py            案例模型：时间、卦象、断辞、备注
+  │
+  └── utils/            工具函数
+      └── db.py              SQLite 读写封装
+
+user_data/            用户数据（运行时持久化）
+  ├── users.json            用户档案列表
+  ├── cases.json            起卦案例
+  └── zhouyi.db             SQLite（大量数据时替代 JSON）
+
+build/                构建（gitignore，仅 build.sh 不入 .gitignore）
+  ├── build.sh              一键构建脚本
+  └── ZhouyiUnity/          PyInstaller 工作目录（自动生成）
+
+dist/                 打包产物（gitignore）
+  ├── ZhouyiUnity.app       macOS 应用，双击运行，无需装 Python（~97MB）
+  └── ZhouyiUnity/          Windows 目录，含 .exe
+
+.vscode/              VS Code 工程配置
+  ├── launch.json           调试配置，F5 启动
+  └── settings.json         Python 解释器路径、排除目录
+
+tests/                单元测试
+
+──────── 字体 ────────
+
+全局 16px，优先：
+  macOS:   PingFang SC（苹方）
+  Windows: Microsoft YaHei（微软雅黑）
+  回退:    Noto Sans CJK SC
+
+标题/大号文字可用 20-24px
+
+──────── 常用命令 ────────
+
+开发运行:    cd ~/Desktop/ZhouyiUnity && python3 main.py
+调试:        VS Code 按 F5（或双击 Vscode启动.command）
+             Spyder → 打开 main.py → 按 F5
+Claude AI:   双击 Claude-启动.command
+构建打包:    bash build/build.sh
+清理构建:    bash build/build.sh clean
