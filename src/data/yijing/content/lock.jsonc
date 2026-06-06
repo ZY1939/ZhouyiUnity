@@ -1,0 +1,64 @@
+{
+  "all": 0,
+  "id": 2,
+  "name": 2,
+  "full_name": 2,
+  "symbol": 2,
+  "binary": 2,
+  "upper": 2,
+  "lower": 2,
+  "scripture": 2,
+  "tuan": 2,
+  "daxiang": 2,
+  "huguaId": 2,
+  "huguaName": 2,
+  "xiang_ke": {
+    "all": 0,
+    "xiang": 0,
+    "ke": 0
+  },
+  "nishi": {
+    "all": 1,
+    "interpretation": 0,
+    "diagram": {
+      "all": 0,
+      "description": 0,
+      "image_path": 0
+    },
+    "home": {
+      "all": 0,
+      "member": 0,
+      "direction": 0,
+      "description": 0
+    },
+    "bazi": {
+      "all": 0,
+      "young": 0,
+      "old": 0,
+      "year": 0
+    }
+  },
+  "history": {
+    "all": 0,
+    "_items": [
+      {
+        "all": 0,
+        "source": 0,
+        "dynasty": 0,
+        "description": 0
+      }
+    ]
+  },
+  "lines": {
+    "all": 1,
+    "_items": [
+      {
+        "all": 0,
+        "attribute": 2,
+        "scripture": 2,
+        "xiang": 2,
+        "nishi": 0
+      }
+    ]
+  }
+}
