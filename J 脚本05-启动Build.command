@@ -1,5 +1,5 @@
 #!/bin/bash
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")"
 
 WIN_ID=""
 if [ "$TERM_PROGRAM" = "Apple_Terminal" ]; then

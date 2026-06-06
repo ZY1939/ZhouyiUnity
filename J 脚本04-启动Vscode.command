@@ -4,7 +4,7 @@ if [ "$TERM_PROGRAM" = "Apple_Terminal" ]; then
     WIN_ID=$(osascript -e 'tell app "Terminal" to id of front window' 2>/dev/null)
 fi
 
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")"
 code . --new-window
 
 if [ -n "$WIN_ID" ]; then
