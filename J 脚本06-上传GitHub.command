@@ -13,10 +13,13 @@ if [ ! -d .git ]; then
 fi
 
 # ---- 提交信息 ----
+DEFAULT_MSG="$(date '+%Y年%m月%d日%H时') 更新"
+
 if [ -n "$1" ]; then
     COMMIT_MSG="$1"
 else
-    COMMIT_MSG="$(date '+%Y年%m月%d日%H时') 更新"
+    read -p "📝 提交信息 (回车使用默认): " INPUT_MSG
+    COMMIT_MSG="${INPUT_MSG:-$DEFAULT_MSG}"
 fi
 echo "📝 提交信息: $COMMIT_MSG"
 
