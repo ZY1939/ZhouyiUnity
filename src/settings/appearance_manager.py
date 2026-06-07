@@ -277,47 +277,44 @@ def apply_appearance(main_window) -> None:
         font = QFont(font_family, font_size)
         app.setFont(font)
 
-    # ── 2. 侧边栏图标/行高联动字号 ──
+    # ── 2. 背景图预渲染（必须在 refresh_sidebar 之前，毛玻璃需要 _bg_cache.png）──
+    central = main_window.centralWidget()
+    style_parts = [
+        f"background-color: {bg_color};",
+    ]
+
+    if central is not None and bg_image and os.path.isfile(bg_image):
+        csize = central.size()
+        cached = _scale_and_cache_image(bg_image, bg_image_opacity, bg_image_mode,
+                                        csize.width(), csize.height(),
+                                        overlay_alpha, overlay_dark)
+        escaped = cached.replace("\\", "/")
+        style_parts.append(
+            f"background-image: url({escaped});"
+            f"background-repeat: no-repeat;"
+        )
+
+    # 应用到 centralWidget
+    if central is not None:
+        central.setStyleSheet("")
+        central.setStyleSheet(" ".join(style_parts))
+
+    # ── 3. 侧边栏图标/行高联动字号（在背景图缓存之后，确保毛玻璃用到新图）──
     settings_tab = getattr(main_window, "_settings", None)
     if settings_tab and hasattr(settings_tab, "refresh_sidebar"):
         settings_tab.refresh_sidebar(font_size, text_color, has_bg_image)
 
-    # ── 2.5. 面板文字颜色跟随背景切换 ──
+    # ── 3.5. 面板文字颜色跟随背景切换 ──
     if settings_tab and hasattr(settings_tab, "refresh_text_color"):
         settings_tab.refresh_text_color(text_color)
 
-    # ── 2.6. 起卦面板行高/间距跟随字号缩放 ──
+    # ── 3.6. 起卦面板行高/间距跟随字号缩放 ──
     yijing_viewer = getattr(main_window, "_yijing", None)
     if yijing_viewer:
         if hasattr(yijing_viewer, "refresh_font_size"):
             yijing_viewer.refresh_font_size(font_size)
         if hasattr(yijing_viewer, "refresh_text_color"):
             yijing_viewer.refresh_text_color(text_color)
-
-    # ── 3. 背景 + 文字颜色（应用到 centralWidget）──
-    central = main_window.centralWidget()
-    if central is None:
-        return
-
-    style_parts = [
-        f"background-color: {bg_color};",
-    ]
-
-    # 如果有背景图片，预渲染到与 centralWidget 相同尺寸的画布
-    if bg_image and os.path.isfile(bg_image):
-        csize = central.size()
-        cached = _scale_and_cache_image(bg_image, bg_image_opacity, bg_image_mode,
-                                        csize.width(), csize.height(),
-                                        overlay_alpha, overlay_dark)
-        escaped = cached.replace("\\", "/")  # Windows 反斜杠→正斜杠
-        style_parts.append(
-            f"background-image: url({escaped});"
-            f"background-repeat: no-repeat;"
-        )
-
-    # 先清空再设置，强制 Qt stylesheet 引擎重新解析 url() 加载新图片
-    central.setStyleSheet("")
-    central.setStyleSheet(" ".join(style_parts))
 
     # ── 3.5. QTabWidget 标签栏样式 — 跟随系统主题、无接缝、字号自适应 ──
     tab = main_window.findChild(QTabWidget, "mainTab")
