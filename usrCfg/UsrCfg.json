@@ -39,10 +39,11 @@
     "longitude": 120.1663,
     "latitude": 30.2943,
     "use_in_bazi": true,
-    "show_in_statusbar": true
+    "show_in_statusbar": true,
+    "manual_edit": false
   },
   "general": {
-    "last_tab_index": 0,
+    "last_tab_index": 4,
     "qigua_method": "coin"
   }
 }

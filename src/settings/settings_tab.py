@@ -71,7 +71,7 @@ from .panels.solar_time_panel import SolarTimePanel
 
 # ── 图标路径 ──────────────────────────────────────────
 # 使用相对路径保证工程移动后依然能找到图标
-_ICON_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "data", "icon", "setting")
+_ICON_DIR = os.path.join(os.path.dirname(__file__), "..", "data", "icon", "setting")
 
 
 def _svg_icon(name: str, size: int, icon_bg_alpha: int = 0) -> QIcon:
@@ -97,14 +97,16 @@ def _svg_icon(name: str, size: int, icon_bg_alpha: int = 0) -> QIcon:
     # 蓝色圆角方块背景 — 让图标在背景图上也能看清
     if icon_bg_alpha > 0:
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        margin = max(1, int(size * 0.06))
-        radius = max(3, int(size * 0.28))
+        margin = max(1, int(size * 0.03))
+        radius = max(4, int(size * 0.24))
         painter.setBrush(QColor(0, 122, 255, icon_bg_alpha))
         painter.setPen(Qt.PenStyle.NoPen)
         painter.drawRoundedRect(margin, margin, size - 2 * margin, size - 2 * margin, radius, radius)
 
     renderer = QSvgRenderer(svg_path)
-    renderer.render(painter)
+    # SVG 图标在蓝底内部缩小，留出蓝底可见区域
+    icon_pad = max(4, int(size * 0.18))
+    renderer.render(painter, QRect(icon_pad, icon_pad, size - 2 * icon_pad, size - 2 * icon_pad))
     painter.end()
     return QIcon(pixmap)
 
@@ -427,39 +429,35 @@ class SettingsTab:
         if sidebar is None:
             return
 
-        # 图标尺寸 = 字号 × 1.6（视觉协调），最小 20px
-        icon_size = max(20, int(font_size * 1.6))
+        # 图标填满行高，字号 × 2.8，最小 24px
+        icon_size = max(24, int(font_size * 2.8))
         sidebar.setIconSize(QSize(icon_size, icon_size))
 
         # 侧边栏文字比正文小 2px，避免太挤
         sidebar_font_size = max(11, font_size - 2)
 
         # ── 两种模式的颜色变量 ──
-        # Qt stylesheet rgba() 要求 alpha 为 0-255 整数，不能用小数
+        # 图标蓝底白字 → Apple 系统菜单风格
+        # 选中项纯蓝底，不用透明淡蓝
+        icon_bg_alpha = 255  # 图标蓝色背景完全不透明
+        selected_bg = "#007aff"  # 纯蓝选中（非半透明）
+        selected_color = "white"
+
         if has_bg_image:
             if text_color == "#ffffff":
-                # 白字 → 深色毛玻璃（alpha=89 ≈ 35%）
                 frame_bg = "rgba(0, 0, 0, 89)"
             else:
-                # 黑字 → 浅色毛玻璃（alpha=102 ≈ 40%）
                 frame_bg = "rgba(255, 255, 255, 102)"
             item_color = text_color
-            selected_bg = "rgba(0, 122, 255, 102)"       # alpha=102 ≈ 40%
-            selected_color = "white"
-            hover_bg = "rgba(128, 128, 128, 46)"          # alpha=46 ≈ 18%
+            hover_bg = "rgba(128, 128, 128, 46)"
             title_color = text_color
-            icon_bg_alpha = 100
-            # QListWidget 自身透明，由 QFrame 提供毛玻璃背景（避免双层叠加）
             list_bg = "transparent"
         else:
             frame_bg = "#f0f0f5"
             list_bg = "#f0f0f5"
             item_color = "#333"
-            selected_bg = "#007aff"
-            selected_color = "white"
             hover_bg = "#e0e0e5"
             title_color = "#1d1d1f"
-            icon_bg_alpha = 30
 
         if hasattr(self, "_sidebar_widget") and self._sidebar_widget:
             if has_bg_image:
@@ -500,8 +498,8 @@ class SettingsTab:
             }}
             QListWidget#sidebar::item {{
                 background: transparent;
-                padding: 8px 14px;
-                margin: 2px 10px;
+                padding: 6px 14px;
+                margin: 0px 10px;
                 border-radius: 8px;
                 color: {item_color};
             }}
@@ -515,8 +513,8 @@ class SettingsTab:
             """
         )
 
-        # 行高 = max(图标高, 文字高) + 18px 上下内边距
-        row_height = max(icon_size, int(sidebar_font_size * 1.6)) + 18
+        # 行高 = 图标高 + 少量上下留白
+        row_height = icon_size + 8
 
         # 逐项更新图标和行高
         for i in range(sidebar.count()):
