@@ -149,6 +149,16 @@ def _scale_and_cache_image(image_path: str, opacity: int = 100,
         else:
             canvas_w, canvas_h = 2560, 1600
 
+    # 缓存命中检测 — 源文件未变 + 尺寸匹配 → 跳过重新缩放（启动加速）
+    if os.path.isfile(_BG_CACHE):
+        cache_mtime = os.path.getmtime(_BG_CACHE)
+        src_mtime = os.path.getmtime(image_path)
+        cache_pix = QPixmap(_BG_CACHE)
+        if not cache_pix.isNull():
+            cache_size_ok = (cache_pix.width() == canvas_w and cache_pix.height() == canvas_h)
+            if cache_mtime >= src_mtime and cache_size_ok:
+                return _BG_CACHE
+
     canvas = QPixmap(canvas_w, canvas_h)
     canvas.fill(Qt.GlobalColor.transparent)
 
@@ -271,6 +281,13 @@ def apply_appearance(main_window) -> None:
           f"遮罩={overlay_alpha}/{ov_str}, "
           f"图片={'有' if has_bg_image else '无'}")
 
+    # 暂停 resize timer，防止本次处理触发 resize 导致重入
+    _resize_timer = getattr(main_window, "_resize_timer", None)
+    if _resize_timer:
+        _resize_timer.stop()
+    # 设置标志位，让 resizeEvent 知道这是程序触发的 resize
+    main_window._applying_appearance = True
+
     # ── 1. 全局字体（QApplication 级别，所有 Widget 的默认字体）──
     app = QApplication.instance()
     if app:
@@ -379,9 +396,10 @@ def apply_appearance(main_window) -> None:
         """)
         for i in range(tab.count()):
             page = tab.widget(i)
-            # tab_settings 通过 WA_TranslucentBackground 实现透明，
-            # 不能用 QSS background: transparent（会传播到右侧 ScrollArea viewport）
-            if page and page.objectName() != "tab_settings":
+            if page:
                 page.setStyleSheet("background: transparent;")
 
     # 状态栏使用固定深灰色背景+白字，无需随外观联动刷新
+
+    # 清除标志位，允许 resizeEvent 恢复响应
+    main_window._applying_appearance = False

@@ -30,8 +30,16 @@ class MainWindow(QMainWindow):
     def resizeEvent(self, event):
         """窗口大小改变时，防抖重新渲染背景图片缓存"""
         super().resizeEvent(event)
+        if getattr(self, "_applying_appearance", False):
+            return
         if hasattr(self, "_resize_timer"):
-            self._resize_timer.start()
+            # 首次 resize（窗口刚显示）→ 立即渲染，后续 resize → 300ms 防抖
+            if getattr(self, "_initial_appearance_applied", False):
+                self._resize_timer.start()
+            else:
+                self._resize_timer.stop()
+                apply_appearance(self)
+                self._initial_appearance_applied = True
 
     def _load_ui(self):
         """加载 .ui 文件，提取布局和属性"""
@@ -64,9 +72,6 @@ class MainWindow(QMainWindow):
         self._bazhai = BazhaiTab(self)
         self._cases = CaseManager(self)
         self._settings = SettingsTab(self)
-
-        # 首次启动无配置 → 默认值自动生成；有配置 → 读取并应用
-        apply_appearance(self)
 
         # 窗口大小改变时重新渲染背景图片（300ms 防抖）
         self._resize_timer = QTimer(self)

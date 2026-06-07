@@ -81,7 +81,8 @@ from ..settings.config_manager import config_manager
 
 from .bagua import GuaResult, COIN_TO_YAO, YARROW_TO_YAO
 from .hexagram_drawer import HexagramDrawer
-from .hexagram_calc import calc_three_numbers, calc_from_yang_lines, calc_six_lines
+from .hexagram_calc import calc_three_numbers, calc_from_yang_lines, calc_six_lines, _yang_to_xiantian
+from .hexagram_loader import load_all_gua, get_gua_by_xiantian
 from .countdown_timer import CountdownDialog
 from .stopwatch_timer import StopwatchDialog
 
@@ -118,6 +119,27 @@ _PRIMARY_BTN = """
     border: none; border-radius: 6px; background: #007aff;
     font-weight: bold; color: #ffffff;
 """
+
+
+def _is_light_color(hex_color: str) -> bool:
+    """
+    判断 hex 颜色是否为亮色（用于决定深色/浅色模式）
+
+    将 hex 颜色转为 RGB，计算相对亮度。亮度 > 128 视为"亮色"→ 深色模式。
+
+    Args:
+        hex_color: CSS hex 颜色字符串，如 "#1d1d1f" 或 "#ffffff"
+
+    Returns:
+        True: 亮色文字 → 深色背景模式
+        False: 暗色文字 → 浅色背景模式
+    """
+    hex_color = hex_color.lstrip("#")
+    if len(hex_color) < 6:
+        return False
+    r, g, b = int(hex_color[0:2], 16), int(hex_color[2:4], 16), int(hex_color[4:6], 16)
+    luminance = 0.299 * r + 0.587 * g + 0.114 * b
+    return luminance > 128
 
 
 class _DotButton(QPushButton):
@@ -177,6 +199,42 @@ class _DotButton(QPushButton):
             QPushButton {{ background: {bg}; border: 2px solid {border}; border-radius: 7px; }}
             QPushButton:hover {{ border-color: {self._COLOR}; }}
         """)
+
+
+class _GuaPickerPopup(QWidget):
+    """
+    卦选择弹窗 — Popup 窗口，点击外部自动关闭
+
+    关闭时自动恢复标题按钮的 Lock 禁用状态 + 清理面板引用。
+
+    Parameters:
+        picker: QListWidget — 已构建好的卦列表控件
+        was_enabled: bool — 弹出前标题按钮的启用状态（Lock OFF=True, Lock ON=False）
+        title_btn: QPushButton — 标题按钮引用，用于关闭时恢复状态
+        panel: QiguaPanel — 面板引用，用于关闭时清理 _gua_picker
+    """
+
+    def __init__(self, picker, was_enabled, title_btn, panel, parent=None):
+        super().__init__(None)  # 必须无 parent，否则不是顶层 Popup 窗口
+        self._was_enabled = was_enabled
+        self._title_btn = title_btn
+        self._panel = panel
+        self.setWindowFlags(
+            Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint
+        )
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(picker)
+
+    def closeEvent(self, event):
+        """关闭弹窗时恢复 Lock 状态 + 清理面板引用"""
+        if not self._was_enabled and self._title_btn is not None:
+            self._title_btn.setEnabled(False)
+        if self._panel is not None:
+            self._panel._gua_picker = None
+        super().closeEvent(event)
 
 
 class QiguaPanel(QWidget):
@@ -452,6 +510,8 @@ class QiguaPanel(QWidget):
         self._title_label.setFlat(True)
         self._title_label.setCursor(Qt.CursorShape.PointingHandCursor)
         self._title_label.setFixedHeight(lh)
+        # eventFilter 捕获鼠标按下 → 确保弹出菜单（比 clicked 信号更可靠）
+        self._title_label.installEventFilter(self)
         # 按实际字号计算文本宽度，避免大字号下被裁剪
         title_font = QFont()
         title_font.setPointSize(self._font_size + 4)
@@ -1443,7 +1503,7 @@ class QiguaPanel(QWidget):
         调用时机：__init__() 中调用，仅一次
         """
         self._btn_group.buttonClicked.connect(self._on_dot_clicked)
-        self._title_label.clicked.connect(self._on_calc)
+        # title_label 已通过 installEventFilter 处理，见 eventFilter()
         self._drawer.line_toggled.connect(self._on_drawer_toggled)
 
     # ═══════════════════════════════════════════════════════════
@@ -2079,6 +2139,198 @@ class QiguaPanel(QWidget):
                         break
                 combo.blockSignals(False)
         self._sync_coin_yarrow_display()
+
+    # ═══════════════════════════════════════════════════════════
+    #  事件过滤（确保弹出菜单在 macOS 下可靠触发）
+    # ═══════════════════════════════════════════════════════════
+
+    def eventFilter(self, obj, event):
+        """拦截 _title_label 的鼠标按下事件 → 弹出卦选择列表"""
+        from PySide6.QtCore import QEvent
+        if obj is self._title_label and event.type() == QEvent.Type.MouseButtonPress:
+            self._show_gua_picker()
+            return True
+        return super().eventFilter(obj, event)
+
+    # ═══════════════════════════════════════════════════════════
+    #  卦名弹出菜单
+    # ═══════════════════════════════════════════════════════════
+
+    def _show_gua_picker(self):
+        """
+        点击「起卦」标题 → 弹出可滚动的 64 卦选择列表
+
+        列表格式：01 ☰ 乾为天  02 ☷ 坤为地  ...
+        每次最多显示 10 行，超出滚动。
+        选中后：跳转到对应卦象，动爻设置保持不变。
+        点击列表外部自动关闭。
+        """
+        from PySide6.QtWidgets import QListWidget, QListWidgetItem
+
+        all_gua = load_all_gua()
+        if not all_gua:
+            return
+
+        # 强制启用标题按钮（Lock 状态下按钮被禁用）
+        was_enabled = self._title_label.isEnabled()
+        if not was_enabled:
+            self._title_label.setEnabled(True)
+
+        # 计算尺寸
+        row_h = self._font_size * 2 + 10  # 每行高度（含上下 padding）
+        visible_rows = min(10, len(all_gua))
+        list_w = 320  # 列表宽度
+
+        # ── 根据当前主题计算弹窗颜色 ──
+        # 文字颜色亮 → 深色模式；文字颜色暗 → 浅色模式
+        tc = self._text_color
+        is_dark = _is_light_color(tc)
+        if is_dark:
+            bg = "#2c2c2e"
+            border_c = "#555555"
+            hover_bg = "#3a3a3c"
+            scroll_handle = "#555555"
+            item_text = "#f0f0f0"
+        else:
+            bg = "#ffffff"
+            border_c = "#cccccc"
+            hover_bg = "#f0f0f5"
+            scroll_handle = "#cccccc"
+            item_text = "#1d1d1f"
+
+        # ── 列表控件 ──
+        picker = QListWidget()
+        picker.setFrameShape(QFrame.Shape.NoFrame)
+        picker.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        picker.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        picker.setFixedSize(list_w, row_h * visible_rows + 4)
+        picker.setStyleSheet(f"""
+            QListWidget {{
+                background: {bg};
+                border: 1px solid {border_c};
+                border-radius: 6px;
+                font-size: {self._font_size}px;
+                color: {item_text};
+            }}
+            QListWidget::item {{
+                padding: 5px 12px;
+                height: {row_h}px;
+            }}
+            QListWidget::item:selected {{
+                background: #007aff;
+                color: #ffffff;
+            }}
+            QListWidget::item:hover {{
+                background: {hover_bg};
+            }}
+            QScrollBar:vertical {{
+                width: 8px;
+                background: transparent;
+            }}
+            QScrollBar::handle:vertical {{
+                background: {scroll_handle};
+                border-radius: 4px;
+                min-height: 30px;
+            }}
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
+                height: 0;
+            }}
+        """)
+
+        sorted_ids = sorted(all_gua.keys())
+        for gid in sorted_ids:
+            data = all_gua[gid]
+            item = QListWidgetItem(f"{gid:02d}  {data.get('symbol', '')} {data.get('full_name', '?')}")
+            item.setData(Qt.ItemDataRole.UserRole, gid)
+            picker.addItem(item)
+
+        picker.itemClicked.connect(
+            lambda item: self._on_picker_selected(item, picker, was_enabled)
+        )
+
+        # ── 包装到 Popup 弹窗中（处理关闭事件）──
+        popup = _GuaPickerPopup(picker, was_enabled, self._title_label, self)
+        # 保持引用防止 GC 回收（Popup 窗口必须被引用才能持续显示）
+        self._gua_picker = popup
+        # 弹出在标题按钮左下方
+        pos = self._title_label.mapToGlobal(self._title_label.rect().bottomLeft())
+        screen = self.screen()
+        if screen:
+            screen_bottom = screen.availableGeometry().bottom()
+            if pos.y() + picker.height() > screen_bottom:
+                pos.setY(screen_bottom - picker.height())
+        popup.move(pos)
+        popup.show()
+
+    def _on_picker_selected(self, item, picker, was_enabled):
+        """
+        列表项被点击 → 提取卦 ID → 关闭弹窗 → 跳转卦象
+
+        Parameters:
+            item: QListWidgetItem — 被点击的列表项
+            picker: QListWidget — 弹出列表控件
+            was_enabled: bool — Lock 状态恢复
+        """
+        gua_id = item.data(Qt.ItemDataRole.UserRole)
+        # 关闭弹窗窗口（picker 的顶层 Popup 窗口）
+        popup = picker.window()
+        if popup:
+            popup.close()
+        # 恢复 Lock 状态
+        if not was_enabled:
+            self._title_label.setEnabled(False)
+        if gua_id is not None:
+            self._on_gua_picked(gua_id)
+
+    def _on_gua_picked(self, gua_id: int):
+        """
+        用户从菜单选中某卦 → 跳转到该卦，保持当前动爻不变
+
+        Parameters:
+            gua_id: 卦 ID (1-64)
+        """
+        all_gua = load_all_gua()
+        data = all_gua.get(gua_id)
+        if not data:
+            return
+
+        binary = data.get("binary", "000000")
+        yang = [c == "1" for c in binary]
+
+        # 更新卦图
+        self._drawer.set_lines(yang)
+
+        # 保持 _changing_lines 不变，重新计算变卦
+        lower_num = _yang_to_xiantian(yang[:3])
+        upper_num = _yang_to_xiantian(yang[3:])
+
+        # 构建变卦
+        bian_gua = None
+        changing_list = sorted(self._changing_lines)
+        if changing_list:
+            new_binary = list(binary)
+            for cl in changing_list:
+                idx = cl - 1
+                new_binary[idx] = "0" if binary[idx] == "1" else "1"
+            new_binary = "".join(new_binary)
+            new_lower = _yang_to_xiantian([c == "1" for c in new_binary[:3]])
+            new_upper = _yang_to_xiantian([c == "1" for c in new_binary[3:]])
+            bian_gua = get_gua_by_xiantian(new_upper, new_lower)
+
+        result = GuaResult(
+            ben_gua=data,
+            bian_gua=bian_gua,
+            lower_num=lower_num,
+            upper_num=upper_num,
+            changing_line=changing_list[0] if changing_list else 0,
+            changing_lines=changing_list,
+        )
+
+        # 同步动爻到所有面板控件
+        self._sync_controls_to_changing_lines()
+
+        # 显示结果
+        self._show_result(result)
 
     # ═══════════════════════════════════════════════════════════
     #  统一计算入口
