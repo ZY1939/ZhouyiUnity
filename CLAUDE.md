@@ -17,10 +17,22 @@ ZhouyiUnity/
 ├── src/
 │   ├── main_window.py      MainWindow — 加载.ui、注入Tab、外观初始化、状态栏、标签页记忆
 │   ├── tabs/               Tab 页逻辑
-│   │   ├── yijing_viewer.py    易经查看器
-│   │   ├── qigua.py            起卦
+│   │   ├── yijing_viewer.py    易经与起卦（注入 src/qigua/QiguaPanel）
 │   │   ├── bazhai.py           八宅
 │   │   └── case_manager.py     案例管理
+│   ├── qigua/              起卦工具包（手工指定/三位数/金钱卦/蓍草卦）
+│   │   ├── __init__.py        导出 QiguaPanel
+│   │   ├── bagua.py           先天八卦常量 + GuaResult dataclass
+│   │   ├── hexagram_loader.py  加载 content/*.jsonc，搜索卦
+│   │   ├── hexagram_calc.py     核心计算（三位数→卦、六爻→卦）
+│   │   ├── hexagram_painter.py  画卦预留接口（空壳）
+│   │   ├── manual_input.py      手工指定 Widget
+│   │   ├── number_input.py      三位数 Widget（含时间随机/秒表）
+│   │   ├── countdown_timer.py   10秒倒计时弹窗
+│   │   ├── stopwatch_timer.py   秒表弹窗
+│   │   ├── lines_input.py       金钱卦/蓍草卦 6爻输入 Widget
+│   │   ├── result_view.py       结果显示 Widget
+│   │   └── divination_panel.py  主面板（方法选择+输入区+结果区）
 │   ├── settings/           设置系统（macOS风格左侧240px侧边栏 + 右侧面板）
 │   │   ├── __init__.py           导出 SettingsTab
 │   │   ├── settings_tab.py       主设置页：CATEGORIES注册、侧边栏、QStackedWidget切换
@@ -56,6 +68,7 @@ ZhouyiUnity/
 - **相对路径**：项目工程会移动，禁止硬编码绝对路径
 - **面板模式**：新增设置面板继承 QWidget → 在 settings_tab.py CATEGORIES 注册 → config_manager DEFAULT_CONFIG 加默认值
 - **面板文字颜色**：PANEL_STYLE 使用 `.format(text_color=)` 模板，QWidget/QLabel/QGroupBox/QCheckBox 用 `{text_color}` 占位符；输入控件和按钮保持硬编码（有自背景）
+- **非设置Tab文字颜色联动**：自定义Widget（如QiguaPanel）需实现 `refresh_text_color(text_color: str)` 方法，内部存 `self._text_color`，所有checkbox/label/combo的stylesheet用 f-string 嵌入 `{self._text_color}`。调用链：appearance_manager.apply_appearance() 计算 text_color → yijing_viewer.refresh_text_color() → qigua_panel.refresh_text_color()。新增Tab遵循同样模式
 - **获取状态栏引用**：`getattr(self.window(), "_statusbar_mgr", None)`，禁止 import statusbar_manager（循环导入）
 - **添加新Widget控件**：检查文件顶部 PySide6 imports，QComboBox/QSpinBox等容易遗漏
 - **状态栏即时刷新**：任何改变状态栏显示内容的配置变更后，调用 `mgr._refresh()` 不要等timer tick
@@ -90,6 +103,22 @@ bash build/build.sh clean    # Clean
 ```
 
 ## Change Timeline
+
+### 2026-06-08
+- **起卦面板**：src/qigua/divination_panel.py — QiguaPanel 主面板，左侧 HexagramDrawer + 右侧 QStackedWidget 切换 4 种输入方式
+- **HexagramDrawer 对齐**：bar 中心公式 `name_area_h + line_h//2 + row * line_h`，与右侧面板 checkbox/label 的 row center 完全一致，确保爻与控件行严格对齐
+- **HexagramDrawer 参数**：`_apply_font(QFont, font_size)` 用 QFontMetrics 精确计算 line_h / bar_h / name_area_h / bar_w / yin_gap；`configure()` 可手动覆盖；`set_font_size()` 供全局字体变更调用；`offset_y` 微调整体垂直偏移
+- **macOS 统一标题栏**：main_window.py `_setup_unified_tabs()` — 隐藏 QTabWidget 原生 tab bar，在 QToolBar 中创建独立 QTabBar 并双向同步；`setUnifiedTitleAndToolBarOnMac(True)` 让 toolbar 和红绿灯按钮同行；左右 QWidget spacer (Expanding) 实现 tab 居中
+- **Tab 标签栏样式**：toolbar/QTabBar 背景 transparent，让 macOS 原生统一标题栏材质透过来；文字颜色跟随 Qt.ColorScheme（深色→白字，浅色→黑字）；tab 内边距 `font_size * 0.35`(v) `* 0.95`(h) 随字号动态缩放；toolbar 设 WA_TranslucentBackground 属性确保原生材质穿透
+- **QiguaPanel 字体刷新链**：apply_appearance() → yijing_viewer.refresh_font_size() → qigua_panel.refresh_font_size() → drawer.set_font_size() → 所有面板 _update_panel_layout()
+- **QiguaPanel 间距体系**：所有间距以 drawer.line_h 为基准 — gap_xs = lh*0.12, gap_sm = lh*0.25, gap_md = lh*0.45；root 底部 addStretch() 保证额外空间全部沉底
+- **UI 布局清理**：ui/zhouyiUnity.ui verticalLayout 所有 margin=0；tab_qigua 旧控件清空；src/tabs/qigua.py 删除
+- **金钱/蓍草面板合并**：删除 _make_coin_panel / _make_yarrow_panel，统一为 _make_lines_panel()，共用 _lines_cbs / _lines_inputs / _lines_rows；切换模式时 _update_lines_combo_options() 更新下拉选项 + cross_map 值映射（0↔6, 1↔7, 2↔8, 3↔9）
+- **行高精确控制**：金钱/蓍草每行包裹在 setFixedHeight(line_h) 的 QWidget 容器中，combo padding 压缩为 2px 6px + border 1px，确保行高不受 combo 影响，与 drawer bar 严格对齐
+- **文字颜色联动链**：apply_appearance() → yijing_viewer.refresh_text_color() → qigua_panel.refresh_text_color()；QiguaPanel 存 self._text_color，所有 checkbox/label/combo/result 的 stylesheet 用 f-string 嵌入 {self._text_color}；新增Tab须遵循同样模式
+- **方法标签可点击**：header 中"手工/报数/金钱/蓍草"标签改为 flat QPushButton，hover 变色，clicked → dot.click() 切换方法
+- **默认值优化**：金钱/蓍草 combo 默认选中"少阳"（index 2），combo 用 AdjustToContents 自适应宽度
+- **CLAUDE.md**：新增"非设置Tab文字颜色联动"规范 + Change Timeline 记录
 
 ### 2026-06-07
 - **状态栏**：新增左侧"就绪"标签 + show_status/reset_status 状态消息机制；合并时间显示为 `时间(真) 14:30 (14:12)` 精简格式；删除"农历""小六壬"冗余标签；四柱显示 `(真)/(平)`

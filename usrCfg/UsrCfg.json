@@ -19,13 +19,18 @@
     }
   },
   "appearance": {
-    "background_color": "#87b3b4",
-    "background_image": "",
+    "background_color": "#373738",
+    "background_image": "usrCfg/_bg_original.png",
     "font_family": "PingFang SC",
     "font_size": 16,
     "line_spacing": 1.5,
-    "background_image_mode": "fill",
-    "background_image_opacity": 30
+    "background_image_mode": "fit",
+    "background_image_opacity": 100,
+    "text_color_mode": "auto",
+    "text_color": "#ffffff",
+    "overlay_enabled": false,
+    "overlay_strength": "medium",
+    "sidebar_blur_radius": 8
   },
   "solar_time": {
     "enabled": true,
@@ -37,6 +42,7 @@
     "show_in_statusbar": true
   },
   "general": {
-    "last_tab_index": 4
+    "last_tab_index": 0,
+    "qigua_method": "coin"
   }
 }

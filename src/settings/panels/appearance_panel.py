@@ -43,11 +43,12 @@
   这样实现了"所见即所得"：用户在面板中调整，整个程序窗口立刻看到效果。
 """
 import os
+import shutil
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QFormLayout,
     QLabel, QPushButton, QSpinBox, QDoubleSpinBox,
     QFontComboBox, QComboBox, QLineEdit, QGroupBox,
-    QColorDialog, QFileDialog, QFrame,
+    QColorDialog, QFileDialog, QFrame, QCheckBox,
 )
 from PySide6.QtGui import QColor, QFont
 from PySide6.QtCore import Qt
@@ -56,9 +57,10 @@ from ..config_manager import config_manager
 
 PANEL_STYLE = """
 QWidget {{
-    color: {text_color};
+    background: transparent;
 }}
 QGroupBox {{
+    background: transparent;
     font-weight: bold;
     border: 1px solid #dcdcdc;
     border-radius: 8px;
@@ -113,7 +115,13 @@ QPushButton:hover {{
     padding: 20px;
     color: #1d1d1f;
 }}
+QCheckBox {{
+    background: transparent;
+    color: {text_color};
+    spacing: 8px;
+}}
 QLabel {{
+    background: transparent;
     color: {text_color};
 }}
 """
@@ -260,28 +268,67 @@ class AppearancePanel(QWidget):
         font_layout = QFormLayout(font_group)
         font_layout.setSpacing(12)
 
-        # 字体选择（QFontComboBox 自动列出系统所有中文字体，带字体预览）
+        # 字体 + 字号 + 行距（同一行，自适应宽度）
+        font_row = QHBoxLayout()
+        font_row.setSpacing(8)
+        # 字体选择
         self._font_combo = QFontComboBox()
         self._font_combo.setCurrentFont(QFont("PingFang SC"))
-        font_layout.addRow("字体：", self._font_combo)
-
-        # 字号 + 行距（同一行）
-        size_line_row = QHBoxLayout()
-        size_line_row.setSpacing(8)
+        font_box = QHBoxLayout()
+        font_box.setSpacing(1)
+        font_box.addWidget(QLabel("字体："))
+        font_box.addWidget(self._font_combo)
+        font_row.addLayout(font_box)
+        # 字号
         self._font_size_spin = QSpinBox()
         self._font_size_spin.setRange(10, 48)
         self._font_size_spin.setValue(16)
         self._font_size_spin.setSuffix(" px")
-        size_line_row.addWidget(self._font_size_spin)
-        size_line_row.addWidget(QLabel("行距："))
+        size_box = QHBoxLayout()
+        size_box.setSpacing(1)
+        size_box.addWidget(QLabel("字号："))
+        size_box.addWidget(self._font_size_spin)
+        font_row.addLayout(size_box)
+        # 行距
         self._line_spacing_spin = QDoubleSpinBox()
         self._line_spacing_spin.setRange(1.0, 3.0)
         self._line_spacing_spin.setSingleStep(0.1)
         self._line_spacing_spin.setValue(1.5)
-        self._line_spacing_spin.setDecimals(1)
-        size_line_row.addWidget(self._line_spacing_spin)
-        size_line_row.addStretch()
-        font_layout.addRow("字号：", size_line_row)
+        self._line_spacing_spin.setDecimals(2)
+        line_box = QHBoxLayout()
+        line_box.setSpacing(1)
+        line_box.addWidget(QLabel("行距："))
+        line_box.addWidget(self._line_spacing_spin)
+        font_row.addLayout(line_box)
+        # 剩余空间推至右侧
+        font_row.addStretch()
+        font_layout.addRow(font_row)
+
+        # 文字颜色：自动适配 / 手动选择
+        text_color_row = QHBoxLayout()
+        text_color_row.setSpacing(8)
+        self._auto_text_cb = QCheckBox("自动适配")
+        self._auto_text_cb.setChecked(True)
+        text_color_row.addWidget(self._auto_text_cb)
+        self._text_color_combo = QComboBox()
+        self._text_color_combo.addItems(["深色文字", "浅色文字"])
+        self._text_color_combo.hide()
+        text_color_row.addWidget(self._text_color_combo)
+        text_color_row.addStretch()
+        font_layout.addRow("文字颜色：", text_color_row)
+
+        # 可读性增强：遮盖层降低背景图对比度，让文字更清晰
+        overlay_row = QHBoxLayout()
+        overlay_row.setSpacing(8)
+        self._overlay_cb = QCheckBox("启用")
+        self._overlay_cb.setToolTip("在背景图上叠加半透明遮罩，增强文字可读性")
+        overlay_row.addWidget(self._overlay_cb)
+        self._overlay_combo = QComboBox()
+        self._overlay_combo.addItems(["轻度", "中度", "重度"])
+        self._overlay_combo.hide()
+        overlay_row.addWidget(self._overlay_combo)
+        overlay_row.addStretch()
+        font_layout.addRow("可读性增强：", overlay_row)
         root.addWidget(font_group)
 
         # ── 预览区域 ──
@@ -374,6 +421,27 @@ class AppearancePanel(QWidget):
         line_spacing = cfg.get("line_spacing", 1.5)
         self._line_spacing_spin.setValue(line_spacing)
 
+        # 文字颜色模式
+        text_color_mode = cfg.get("text_color_mode", "auto")
+        self._auto_text_cb.setChecked(text_color_mode == "auto")
+        manual_color = cfg.get("text_color", "#1d1d1f")
+        self._text_color_combo.setCurrentIndex(0 if manual_color == "#1d1d1f" else 1)
+        self._text_color_combo.setVisible(text_color_mode == "manual")
+
+        # 可读性增强遮罩
+        self._overlay_cb.setChecked(cfg.get("overlay_enabled", False))
+        strength = cfg.get("overlay_strength", "medium")
+        strength_map = {"light": 0, "medium": 1, "strong": 2}
+        self._overlay_combo.setCurrentIndex(strength_map.get(strength, 1))
+        self._overlay_combo.setVisible(cfg.get("overlay_enabled", False))
+
+        # 自动补全缺失字段（兼容旧配置）
+        for key, val in [("text_color_mode", "auto"), ("text_color", "#1d1d1f"),
+                         ("overlay_enabled", False), ("overlay_strength", "medium")]:
+            if key not in cfg:
+                config_manager.set("appearance", key, value=val)
+
+        self._update_controls_enabled()
         self._update_preview()
 
     def _connect_signals(self):
@@ -402,6 +470,12 @@ class AppearancePanel(QWidget):
         self._font_combo.currentFontChanged.connect(self._on_font_changed)
         self._font_size_spin.valueChanged.connect(self._on_font_size_changed)
         self._line_spacing_spin.valueChanged.connect(self._on_line_spacing_changed)
+        # 文字颜色
+        self._auto_text_cb.toggled.connect(self._on_text_color_mode_changed)
+        self._text_color_combo.currentIndexChanged.connect(self._save_text_color_config)
+        # 可读性增强
+        self._overlay_cb.toggled.connect(self._on_overlay_toggled)
+        self._overlay_combo.currentIndexChanged.connect(self._save_overlay_config)
 
     def _notify_changed(self):
         """
@@ -449,6 +523,54 @@ class AppearancePanel(QWidget):
                            value=mode_map.get(self._bg_mode_combo.currentIndex(), "fill"))
         config_manager.set("appearance", "background_image_opacity",
                            value=self._bg_opacity_spin.value())
+        self._update_controls_enabled()
+        self._notify_changed()
+
+    def _update_controls_enabled(self):
+        """背景图片有/无 → 控制文字颜色和遮罩选项的可用状态"""
+        has_bg = bool(self._bg_image_input.text().strip())
+        # 文字颜色：无图片时强制自动，有图片时可手动
+        self._auto_text_cb.setEnabled(has_bg)
+        if not has_bg:
+            self._auto_text_cb.setChecked(True)
+            self._text_color_combo.setVisible(False)
+        # 可读性增强：仅在有图片时可用
+        self._overlay_cb.setEnabled(has_bg)
+        if not has_bg:
+            self._overlay_cb.setChecked(False)
+            self._overlay_combo.setVisible(False)
+
+    def _on_text_color_mode_changed(self, checked):
+        """自动适配 checkbox 切换"""
+        mode = "auto" if checked else "manual"
+        config_manager.set("appearance", "text_color_mode", value=mode)
+        self._text_color_combo.setVisible(not checked)
+        if not checked:
+            self._save_text_color_config()
+        self._notify_changed()
+
+    def _save_text_color_config(self):
+        """保存手动选择的文字颜色"""
+        idx = self._text_color_combo.currentIndex()
+        color = "#1d1d1f" if idx == 0 else "#ffffff"
+        config_manager.set("appearance", "text_color", value=color)
+        self._notify_changed()
+
+    def _on_overlay_toggled(self, checked):
+        """可读性增强 checkbox 切换"""
+        config_manager.set("appearance", "overlay_enabled", value=checked)
+        self._overlay_combo.setVisible(checked)
+        if checked:
+            self._save_overlay_config()
+        else:
+            self._notify_changed()
+
+    def _save_overlay_config(self):
+        """保存遮罩强度选择"""
+        idx = self._overlay_combo.currentIndex()
+        strength_map = {0: "light", 1: "medium", 2: "strong"}
+        config_manager.set("appearance", "overlay_strength",
+                           value=strength_map.get(idx, "medium"))
         self._notify_changed()
 
     def _on_font_changed(self, font):
@@ -575,35 +697,52 @@ class AppearancePanel(QWidget):
 
     # ── 图片 ──────────────────────────────────────────
 
+    def _copy_bg_to_usrCfg(self, src_path: str) -> str:
+        """
+        将背景图片复制到 usrCfg/ 目录下，返回相对路径
+
+        图片统一保存为 usrCfg/_bg_original.<ext>，配置中存储相对路径，
+        这样项目工程移动后背景不会失效。
+        """
+        if not src_path:
+            return src_path
+        usrCfg_dir = os.path.join(os.path.dirname(__file__), "..", "..", "..", "usrCfg")
+        _proj_root = os.path.join(os.path.dirname(__file__), "..", "..", "..")
+
+        # 相对路径 → 解析为绝对路径
+        if not os.path.isabs(src_path):
+            src_path = os.path.join(_proj_root, src_path)
+
+        if not os.path.isfile(src_path):
+            return src_path
+
+        ext = os.path.splitext(src_path)[1] or ".png"
+        dst = os.path.join(usrCfg_dir, f"_bg_original{ext}")
+        if os.path.normpath(src_path) == os.path.normpath(dst):
+            return f"usrCfg/_bg_original{ext}"
+
+        # 清理旧格式的背景图文件
+        for old_ext in (".png", ".jpg", ".jpeg", ".bmp", ".gif"):
+            old = os.path.join(usrCfg_dir, f"_bg_original{old_ext}")
+            if old != dst and os.path.isfile(old):
+                os.remove(old)
+
+        shutil.copy2(src_path, dst)
+        return f"usrCfg/_bg_original{ext}"
+
     def _on_browse_image(self):
         """
-        （槽函数）打开系统文件选择器选择背景图片
-
-        参数:
-            （无参数）
-
-        返回:
-            None
-
-        流程:
-            1. 弹出 QFileDialog（从用户主目录开始浏览）
-            2. 过滤文件类型: png / jpg / jpeg / bmp / gif
-            3. 如果用户选择了文件（path 不为空）:
-               - 保存路径到 self._bg_image
-               - 填入路径输入框
-               - 保存到 usrCfg + 更新预览 + 通知全局刷新
-            4. 如果用户点击"取消" → 什么都不做
-
-        支持的图片格式:
-            PNG（推荐，支持透明通道）、JPEG、BMP、GIF
+        （槽函数）打开系统文件选择器选择背景图片，自动复制到 usrCfg/
         """
         path, _ = QFileDialog.getOpenFileName(
             self, "选择背景图片", os.path.expanduser("~"),
             "图片文件 (*.png *.jpg *.jpeg *.bmp *.gif)"
         )
         if path:
-            self._bg_image = path
-            self._bg_image_input.setText(path)
+            # 复制到 usrCfg/ 目录，避免原图被移动后失效
+            local_path = self._copy_bg_to_usrCfg(path)
+            self._bg_image = local_path
+            self._bg_image_input.setText(local_path)
             self._save_appearance()
             self._update_preview()
 

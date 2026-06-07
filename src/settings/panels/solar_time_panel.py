@@ -54,14 +54,14 @@ FALLBACK_LON = 120.2
 FALLBACK_LAT = 30.25
 
 PANEL_STYLE = """
-QWidget {{ color: {text_color}; }}
-QGroupBox {{ font-weight: bold; border: 1px solid #dcdcdc; border-radius: 8px; margin-top: 12px; padding-top: 16px; color: {text_color}; }}
+QWidget {{ background: transparent; }}
+QGroupBox {{ background: transparent; font-weight: bold; border: 1px solid #dcdcdc; border-radius: 8px; margin-top: 12px; padding-top: 16px; color: {text_color}; }}
 QGroupBox::title {{ subcontrol-origin: margin; left: 12px; padding: 0 6px; color: {text_color}; }}
 QLineEdit, QDoubleSpinBox {{ padding: 6px 10px; border: 1px solid #c0c0c0; border-radius: 6px; background: white; color: #1d1d1f; }}
-QCheckBox {{ color: {text_color}; spacing: 8px; }}
+QCheckBox {{ background: transparent; color: {text_color}; spacing: 8px; }}
 QPushButton {{ padding: 6px 18px; border-radius: 6px; border: 1px solid #c0c0c0; background: #f5f5f5; color: #1d1d1f; }}
 QPushButton:hover {{ background: #e8e8e8; }}
-QLabel {{ color: {text_color}; }}
+QLabel {{ background: transparent; color: {text_color}; }}
 QLabel#city_display {{ font-size: 15px; font-weight: bold; color: #007aff; padding: 4px 0; }}
 """
 

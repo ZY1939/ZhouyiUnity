@@ -60,8 +60,8 @@ from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QListWidget, QListWidgetItem,
     QStackedWidget, QScrollArea, QFrame, QLabel,
 )
-from PySide6.QtGui import QIcon, QPixmap, QPainter
-from PySide6.QtCore import Qt, QSize
+from PySide6.QtGui import QIcon, QPixmap, QPainter, QColor
+from PySide6.QtCore import Qt, QSize, QRect, QPoint
 from PySide6.QtSvg import QSvgRenderer
 
 from .appearance_manager import apply_appearance
@@ -74,38 +74,74 @@ from .panels.solar_time_panel import SolarTimePanel
 _ICON_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "data", "icon", "setting")
 
 
-def _svg_icon(name: str, size: int) -> QIcon:
+def _svg_icon(name: str, size: int, icon_bg_alpha: int = 0) -> QIcon:
     """
-    从 SVG 文件渲染指定像素尺寸的 QIcon
+    从 SVG 文件渲染指定像素尺寸的 QIcon，可选蓝色圆角方块背景
 
     参数:
-        name (str): SVG 文件名（不含 .svg 后缀），如 "ai"、"appearance"、"solartime"
-        size (int): 期望的图标像素尺寸，如 24 → 生成 24×24 的图标
+        name (str):         SVG 文件名（不含 .svg 后缀）
+        size (int):         期望的图标像素尺寸
+        icon_bg_alpha (int): 图标蓝色背景透明度 0-255，0=无背景
 
     返回:
-        QIcon: 渲染好的图标对象。如果 SVG 文件不存在，返回空白 QIcon（不会报错）
-
-    为什么用 SVG 而非 PNG：
-      - SVG 是矢量格式，缩放到任意尺寸都不失真
-      - 不需要准备 @2x/@3x 等多套分辨率 PNG
-      - 图标尺寸跟随全局字号联动时依然清晰
-
-    用法:
-        >>> icon = _svg_icon("ai", 24)
-        >>> item.setIcon(icon)
+        QIcon: 渲染好的图标对象
     """
     svg_path = os.path.join(_ICON_DIR, f"{name}.svg")
     if not os.path.exists(svg_path):
         return QIcon()
 
-    # QSvgRenderer 将 SVG 渲染到 QPixmap 上
-    renderer = QSvgRenderer(svg_path)
     pixmap = QPixmap(size, size)
-    pixmap.fill(Qt.GlobalColor.transparent)  # 透明背景 → 图标只显示形状
+    pixmap.fill(Qt.GlobalColor.transparent)
     painter = QPainter(pixmap)
+
+    # 蓝色圆角方块背景 — 让图标在背景图上也能看清
+    if icon_bg_alpha > 0:
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        margin = max(1, int(size * 0.06))
+        radius = max(3, int(size * 0.28))
+        painter.setBrush(QColor(0, 122, 255, icon_bg_alpha))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.drawRoundedRect(margin, margin, size - 2 * margin, size - 2 * margin, radius, radius)
+
+    renderer = QSvgRenderer(svg_path)
     renderer.render(painter)
     painter.end()
     return QIcon(pixmap)
+
+
+def _gaussian_blur(src: QPixmap, radius: float) -> QPixmap:
+    """
+    多级缩放叠加逼近高斯模糊（中心极限定理：多次 box blur → 高斯）
+
+    比分离卷积纯 Python 实现快 ~50 倍（O(w·h·passes) vs O(w·h·2k)），
+    视觉上与真高斯差异极小。
+
+    参数:
+        src (QPixmap): 原始图像
+        radius (float): 模糊半径（px）
+
+    返回:
+        QPixmap: 模糊后的图像
+    """
+    if radius <= 0:
+        return src
+
+    blurred = src
+    passes = 6
+    for i in range(passes):
+        factor = max(2, int(radius * (i + 1) / passes * 1.5))
+        small = blurred.scaled(
+            max(1, src.width() // factor),
+            max(1, src.height() // factor),
+            Qt.AspectRatioMode.IgnoreAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        blurred = small.scaled(
+            src.width(), src.height(),
+            Qt.AspectRatioMode.IgnoreAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+    return blurred
 
 
 # ── 分类定义 ──────────────────────────────────────────
@@ -133,47 +169,6 @@ CATEGORIES = [
 
 # ── 侧边栏固定宽度 ────────────────────────────────────
 SIDEBAR_WIDTH = 240
-
-# ── 全局样式 ──────────────────────────────────────────
-# 注意：侧边栏字号由代码根据全局字体动态设置，此处不写死 font-size
-GLOBAL_STYLE = """
-/* 侧边栏 — 浅灰背景，选中项蓝色高亮 */
-QListWidget#sidebar {
-    background-color: #f0f0f5;
-    border: none;
-    outline: none;
-    padding: 8px 0;
-    color: #333;
-}
-QListWidget#sidebar::item {
-    padding: 8px 14px;
-    margin: 2px 10px;
-    border-radius: 8px;
-    color: #333;
-}
-QListWidget#sidebar::item:selected {
-    background-color: #007aff;
-    color: white;
-}
-QListWidget#sidebar::item:hover:!selected {
-    background-color: #e0e0e5;
-}
-
-/* 右侧滚动区 */
-QScrollArea#content_area {
-    border: none;
-    background: white;
-}
-
-/* 分割线 */
-QFrame#divider {
-    border: none;
-    background-color: #d0d0d5;
-    min-width: 1px;
-    max-width: 1px;
-}
-"""
-
 
 class SettingsTab:
     """
@@ -251,10 +246,14 @@ class SettingsTab:
         # .ui 文件已有一个 layout，先删除再重建（避免 Qt 布局冲突）
         old_layout = container.layout()
         if old_layout is not None:
-            # 将旧 layout 转移给临时 Widget，安全销毁（不这样做会触发 Qt 警告）
             QWidget().setLayout(old_layout)
 
-        container.setStyleSheet(GLOBAL_STYLE)
+        # 容器自身不绘制背景，透传给父级（QTabWidget pane → centralWidget 背景图）
+        # 使用 QSS background: transparent 让 Qt 合成引擎跳过此层绘制
+        # 注意：这不会影响右侧面板区，因为 QScrollArea viewport 已显式设白色
+        container.setAutoFillBackground(False)
+        container.setStyleSheet("background: transparent;")
+        self._container = container
 
         layout = QHBoxLayout(container)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -267,13 +266,13 @@ class SettingsTab:
         # ── 中间：1px 竖线分割 ──
         divider = QFrame()
         divider.setObjectName("divider")
+        divider.setStyleSheet("QFrame#divider { border: none; background-color: #d0d0d5; min-width: 1px; max-width: 1px; }")
         layout.addWidget(divider)
 
         # ── 右侧：设置面板滚动区 ──
         self._content_stack = QStackedWidget()
 
         for cat in CATEGORIES:
-            # AppearancePanel 特殊处理：注入外观变更回调
             if cat["panel_class"] == AppearancePanel:
                 panel = cat["panel_class"](on_changed=lambda: apply_appearance(self._main))
             else:
@@ -285,6 +284,7 @@ class SettingsTab:
         scroll.setObjectName("content_area")
         scroll.setWidgetResizable(True)
         scroll.setWidget(self._content_stack)
+        scroll.setStyleSheet("QScrollArea#content_area { border: none; background: transparent; }")
         layout.addWidget(scroll, 1)
 
         # 默认选中第一项
@@ -312,8 +312,11 @@ class SettingsTab:
             sidebar = self._build_sidebar()
             layout.addWidget(sidebar)
         """
-        sidebar_widget = QWidget()
-        sidebar_widget.setFixedWidth(SIDEBAR_WIDTH)
+        # QFrame 原生支持 stylesheet background，QSS rgba 背景色负责渲染
+        self._sidebar_widget = QFrame()
+        self._sidebar_widget.setFrameShape(QFrame.Shape.NoFrame)
+        self._sidebar_widget.setFixedWidth(SIDEBAR_WIDTH)
+        sidebar_widget = self._sidebar_widget
         sidebar_layout = QVBoxLayout(sidebar_widget)
         sidebar_layout.setContentsMargins(0, 0, 0, 0)
         sidebar_layout.setSpacing(0)
@@ -323,6 +326,7 @@ class SettingsTab:
         self._sidebar_title.setStyleSheet(
             "font-size: 20px; font-weight: bold; color: #1d1d1f; "
             "padding: 20px 16px 12px 20px;"
+            "background: transparent;"
         )
         sidebar_layout.addWidget(self._sidebar_title)
 
@@ -348,32 +352,76 @@ class SettingsTab:
 
     # ── 外观联动 ──────────────────────────────────────
 
-    def refresh_sidebar(self, font_size: int):
+    def _render_frosted_sidebar_bg(self) -> str:
         """
-        根据全局字号重新渲染侧边栏（图标 + 文字大小 + 行高全部联动）
+        渲染毛玻璃侧边栏背景图：裁取 → 高斯模糊（QGraphicsBlurEffect）
 
-        参数:
-            font_size (int): 当前的全局字号（像素），通常来自 appearance.font_size 配置
-                             例如 12、14、16、20、24 等
+        模糊半径读取 appearance.sidebar_blur_radius 配置（默认 8.0px）。
+        设 0 则返回 None，退化为纯半透明色。
 
         返回:
-            None（直接修改侧边栏控件的样式和图标）
+            str: 毛玻璃背景图缓存路径，失败返回 None
+        """
+        from .config_manager import config_manager
+        blur_radius = config_manager.get("appearance", "sidebar_blur_radius")
+        if blur_radius is None:
+            blur_radius = 8.0
+        if blur_radius <= 0:
+            return None
 
-        做的事:
-            1. 按比例计算图标尺寸 = 字号 × 1.6（最小 20px）
-            2. 按比例计算侧边栏文字大小 = 字号 - 2（最小 11px）
-            3. 按比例计算行高 = max(图标高, 文字高) + 18px
-            4. 逐项重新渲染 SVG 图标（保证在新尺寸下清晰）
-            5. 更新标题字号 = 字号 + 4
+        bg_cache = os.path.join(os.path.dirname(__file__), "..", "..", "usrCfg", "_bg_cache.png")
+        if not os.path.isfile(bg_cache):
+            return None
 
-        调用时机:
-            - 初始化时：_build_sidebar() 末尾调用 refresh_sidebar(16)
-            - 外观变更时：appearance_manager.apply_appearance() → refresh_sidebar(font_size)
+        bg_pixmap = QPixmap(bg_cache)
+        if bg_pixmap.isNull():
+            return None
 
-        用法:
-            >>> # 外部调用（通常在 appearance_manager 中）
-            >>> settings_tab.refresh_sidebar(20)  # 字号变为 20px，侧边栏联动放大
-            >>> settings_tab.refresh_sidebar(12)  # 字号变为 12px，侧边栏联动缩小
+        central = self._main.centralWidget()
+        if central is None:
+            return None
+
+        pos = self._sidebar_widget.mapTo(central, QPoint(0, 0))
+        size = self._sidebar_widget.size()
+        if size.width() <= 0 or size.height() <= 0:
+            return None
+
+        # Retina 屏设备像素比转换
+        dpr = bg_pixmap.devicePixelRatio()
+        source_rect = QRect(
+            int(pos.x() * dpr), int(pos.y() * dpr),
+            int(size.width() * dpr), int(size.height() * dpr),
+        )
+        source_rect = source_rect.intersected(bg_pixmap.rect())
+        if source_rect.isEmpty():
+            return None
+
+        cropped = bg_pixmap.copy(source_rect)
+        cropped.setDevicePixelRatio(1.0)
+        cropped = cropped.scaled(size, Qt.AspectRatioMode.IgnoreAspectRatio,
+                                 Qt.TransformationMode.SmoothTransformation)
+
+        # 真高斯模糊：分离卷积（水平+垂直），ctypes 直接操作像素数组
+        blurred = _gaussian_blur(cropped, blur_radius)
+
+        cache_path = os.path.join(os.path.dirname(__file__), "..", "..", "usrCfg", "_sidebar_frosted.png")
+        blurred.save(cache_path, "PNG")
+        return cache_path
+
+    def refresh_sidebar(self, font_size: int, text_color: str = "#1d1d1f",
+                         has_bg_image: bool = False):
+        """
+        根据全局字号、文字颜色、有无背景图重新渲染侧边栏
+
+        参数:
+            font_size (int):  全局字号（像素）
+            text_color (str): 自适应文字颜色，如 "#ffffff" 或 "#1d1d1f"
+            has_bg_image (bool): 是否有背景图片。无图片→侧边栏显示实色底色；
+                                 有图片→侧边栏透明，让图片透出，文字自适应
+
+        两种模式:
+            - 无背景图: 侧边栏 #f0f0f5 实色背景，深色文字（固定颜色）
+            - 有背景图: 侧边栏全透明，文字颜色用 text_color 自适应
         """
         sidebar = self._sidebar_list
         if sidebar is None:
@@ -385,8 +433,86 @@ class SettingsTab:
 
         # 侧边栏文字比正文小 2px，避免太挤
         sidebar_font_size = max(11, font_size - 2)
+
+        # ── 两种模式的颜色变量 ──
+        # Qt stylesheet rgba() 要求 alpha 为 0-255 整数，不能用小数
+        if has_bg_image:
+            if text_color == "#ffffff":
+                # 白字 → 深色毛玻璃（alpha=89 ≈ 35%）
+                frame_bg = "rgba(0, 0, 0, 89)"
+            else:
+                # 黑字 → 浅色毛玻璃（alpha=102 ≈ 40%）
+                frame_bg = "rgba(255, 255, 255, 102)"
+            item_color = text_color
+            selected_bg = "rgba(0, 122, 255, 102)"       # alpha=102 ≈ 40%
+            selected_color = "white"
+            hover_bg = "rgba(128, 128, 128, 46)"          # alpha=46 ≈ 18%
+            title_color = text_color
+            icon_bg_alpha = 100
+            # QListWidget 自身透明，由 QFrame 提供毛玻璃背景（避免双层叠加）
+            list_bg = "transparent"
+        else:
+            frame_bg = "#f0f0f5"
+            list_bg = "#f0f0f5"
+            item_color = "#333"
+            selected_bg = "#007aff"
+            selected_color = "white"
+            hover_bg = "#e0e0e5"
+            title_color = "#1d1d1f"
+            icon_bg_alpha = 30
+
+        if hasattr(self, "_sidebar_widget") and self._sidebar_widget:
+            if has_bg_image:
+                # 尝试毛玻璃效果：裁取背景图 → 模糊 → 叠加蒙版
+                frosted_path = self._render_frosted_sidebar_bg()
+                if frosted_path:
+                    escaped = frosted_path.replace("\\", "/")
+                    # 先清空再设置，强制 Qt stylesheet 引擎重新加载图片文件
+                    self._sidebar_widget.setStyleSheet("")
+                    self._sidebar_widget.setStyleSheet(
+                        f"background-image: url({escaped});"
+                        f"background-repeat: no-repeat;"
+                    )
+                else:
+                    # 降级：纯半透明色
+                    self._sidebar_widget.setStyleSheet(
+                        f"background-color: {frame_bg};"
+                    )
+            else:
+                self._sidebar_widget.setStyleSheet(
+                    f"background-color: {frame_bg};"
+                )
+
+        # 强制 viewport 透明 — QListWidget 内部 viewport 可能有系统默认背景色
+        vp = sidebar.viewport()
+        if vp:
+            vp.setStyleSheet("background: transparent;")
+
         sidebar.setStyleSheet(
-            sidebar.styleSheet() + f"\nQListWidget#sidebar {{ font-size: {sidebar_font_size}px; }}"
+            f"""
+            QListWidget#sidebar {{
+                background-color: {list_bg};
+                border: none;
+                outline: none;
+                padding: 8px 0;
+                color: {item_color};
+                font-size: {sidebar_font_size}px;
+            }}
+            QListWidget#sidebar::item {{
+                background: transparent;
+                padding: 8px 14px;
+                margin: 2px 10px;
+                border-radius: 8px;
+                color: {item_color};
+            }}
+            QListWidget#sidebar::item:selected {{
+                background-color: {selected_bg};
+                color: {selected_color};
+            }}
+            QListWidget#sidebar::item:hover:!selected {{
+                background-color: {hover_bg};
+            }}
+            """
         )
 
         # 行高 = max(图标高, 文字高) + 18px 上下内边距
@@ -398,16 +524,17 @@ class SettingsTab:
             cat_id = item.data(Qt.ItemDataRole.UserRole)
             cat = next((c for c in CATEGORIES if c["id"] == cat_id), None)
             if cat:
-                icon = _svg_icon(cat["icon_name"], icon_size)
+                icon = _svg_icon(cat["icon_name"], icon_size, icon_bg_alpha)
                 if not icon.isNull():
                     item.setIcon(icon)
             item.setSizeHint(QSize(0, row_height))
 
-        # 标题字号联动 = 字号 + 4
+        # 标题字号联动 = 字号 + 4，颜色跟随模式
         if hasattr(self, "_sidebar_title") and self._sidebar_title:
             self._sidebar_title.setStyleSheet(
                 f"font-size: {font_size + 4}px; font-weight: bold; "
-                f"color: #1d1d1f; padding: 20px 16px 12px 20px;"
+                f"color: {title_color}; padding: 20px 16px 12px 20px;"
+                f"background: transparent;"
             )
 
     def refresh_text_color(self, text_color: str):

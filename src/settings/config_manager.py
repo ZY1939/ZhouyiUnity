@@ -155,6 +155,14 @@ DEFAULT_CONFIG = {
         "font_family": _default_font(),
         "font_size": 16,
         "line_spacing": 1.5,
+        # 文字颜色：auto=自动从背景色计算, manual=手动指定
+        "text_color_mode": "auto",
+        "text_color": "#1d1d1f",
+        # 可读性增强遮罩（有背景图时建议启用）
+        "overlay_enabled": False,
+        "overlay_strength": "medium",  # light / medium / strong
+        # 侧边栏毛玻璃模糊半径（0=关闭毛玻璃，退化为半透明色）
+        "sidebar_blur_radius": 8.0,
     },
     "solar_time": {
         "enabled": False,
@@ -168,6 +176,7 @@ DEFAULT_CONFIG = {
     },
     "general": {
         "last_tab_index": 4,  # 默认启动显示"设置"标签页
+        "qigua_method": "manual",  # 起卦方式：manual/three/coin/yarrow
     },
 }
 

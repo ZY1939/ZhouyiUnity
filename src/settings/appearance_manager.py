@@ -42,8 +42,8 @@
   - 外观变更时：AppearancePanel 通过 on_changed 回调触发
 """
 import os
-from PySide6.QtGui import QFont, QPixmap, QPainter
-from PySide6.QtWidgets import QApplication
+from PySide6.QtGui import QFont, QPixmap, QPainter, QColor, QPixmapCache
+from PySide6.QtWidgets import QApplication, QTabWidget
 from PySide6.QtCore import Qt
 
 from .config_manager import config_manager
@@ -111,55 +111,86 @@ def _text_color_for_bg(bg_hex: str) -> str:
 _BG_CACHE = os.path.join(os.path.dirname(__file__), "..", "..", "usrCfg", "_bg_cache.png")
 
 
-def _scale_and_cache_image(image_path: str, opacity: int = 100) -> str:
+def _scale_and_cache_image(image_path: str, opacity: int = 100,
+                           mode: str = "fill", canvas_w: int = 0, canvas_h: int = 0,
+                           overlay_alpha: int = 0, overlay_dark: bool = True) -> str:
     """
-    预缩放背景图片并缓存到 usrCfg/_bg_cache.png，返回缓存路径
+    预渲染背景图片到画布尺寸并缓存，返回缓存路径
 
     参数:
-        image_path (str): 原始图片路径
+        image_path (str):   原始图片路径
+        opacity (int):      不透明度 10-100，100=完全不透明
+        mode (str):         拉伸模式 "fill"/"fit"/"center"/"tile"
+        canvas_w (int):     画布宽度（像素），0=使用屏幕宽度
+        canvas_h (int):     画布高度（像素），0=使用屏幕高度
+        overlay_alpha (int):可读性遮罩透明度 0-255，0=不叠加
+        overlay_dark (bool):True=暗化遮罩(白字用), False=亮化遮罩(黑字用)
 
     返回:
-        str: 缩放后缓存图片的路径
+        str: 缓存图片路径
 
-    为什么需要预缩放:
-        CSS background-image: url() 会加载原始分辨率的图片。
-        用户的截图可能是 Retina 分辨率（10000+ 像素），
-        Qt 在主线程同步渲染会卡死。
-        预缩放到屏幕分辨率后缓存，避免 UI 冻结。
+    为什么需要预渲染:
+        1. CSS background-image 加载原始分辨率，Retina 截图 10000+ 像素卡死
+        2. Qt QSS 不支持 background-size，拉伸/适应/居中/平铺必须在 QPainter 层面实现
+        3. 渲染到与 Widget 相同的尺寸，确保 1:1 像素映射
+        4. 可读性遮罩在缓存时叠加，零运行时开销
     """
     pix = QPixmap(image_path)
     if pix.isNull():
         return image_path
 
-    # 获取主屏幕分辨率作为缩放上限
-    app = QApplication.instance()
-    screen = app.primaryScreen() if app else None
-    if screen:
-        screen_size = screen.size()
-        max_w = screen_size.width()
-        max_h = screen_size.height()
-    else:
-        max_w, max_h = 2560, 1600
+    # 画布尺寸：优先用传入的精确值，否则回退到屏幕分辨率
+    if canvas_w <= 0 or canvas_h <= 0:
+        app = QApplication.instance()
+        screen = app.primaryScreen() if app else None
+        if screen:
+            canvas_w = screen.size().width()
+            canvas_h = screen.size().height()
+        else:
+            canvas_w, canvas_h = 2560, 1600
 
-    # 仅在图片比屏幕大时才缩放
-    if pix.width() > max_w or pix.height() > max_h:
-        pix = pix.scaled(
-            max_w, max_h,
-            Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation,
-        )
+    canvas = QPixmap(canvas_w, canvas_h)
+    canvas.fill(Qt.GlobalColor.transparent)
 
-    # 透明度合成（opacity < 100 时降低图片不透明度）
-    if opacity < 100:
-        transparent = QPixmap(pix.size())
-        transparent.fill(Qt.GlobalColor.transparent)
-        p = QPainter(transparent)
-        p.setOpacity(opacity / 100.0)
-        p.drawPixmap(0, 0, pix)
-        p.end()
-        pix = transparent
+    painter = QPainter(canvas)
+    painter.setOpacity(opacity / 100.0)
 
-    pix.save(_BG_CACHE, "PNG")
+    if mode == "fill":
+        # 拉伸填满 — 忽略宽高比，可能变形
+        scaled = pix.scaled(canvas_w, canvas_h,
+                            Qt.AspectRatioMode.IgnoreAspectRatio,
+                            Qt.TransformationMode.SmoothTransformation)
+        painter.drawPixmap(0, 0, scaled)
+
+    elif mode == "fit":
+        # 适应窗口 — 保持宽高比，居中放置
+        scaled = pix.scaled(canvas_w, canvas_h,
+                            Qt.AspectRatioMode.KeepAspectRatio,
+                            Qt.TransformationMode.SmoothTransformation)
+        x = (canvas_w - scaled.width()) // 2
+        y = (canvas_h - scaled.height()) // 2
+        painter.drawPixmap(x, y, scaled)
+
+    elif mode == "center":
+        # 居中 — 原始大小，不缩放，居中放置
+        x = (canvas_w - pix.width()) // 2
+        y = (canvas_h - pix.height()) // 2
+        painter.drawPixmap(x, y, pix)
+
+    elif mode == "tile":
+        # 平铺 — 从左上角重复绘制填满整个画布
+        for ty in range(0, canvas_h, pix.height()):
+            for tx in range(0, canvas_w, pix.width()):
+                painter.drawPixmap(tx, ty, pix)
+
+    # 可读性增强遮罩 — 在图片上叠加半透明层，降低对比度让文字更清晰
+    if overlay_alpha > 0:
+        painter.setOpacity(overlay_alpha / 255.0)
+        overlay = QColor(0, 0, 0) if overlay_dark else QColor(255, 255, 255)
+        painter.fillRect(canvas.rect(), overlay)
+
+    painter.end()
+    canvas.save(_BG_CACHE, "PNG")
     return _BG_CACHE
 
 
@@ -199,19 +230,46 @@ def apply_appearance(main_window) -> None:
     """
     cfg = config_manager.get("appearance") or {}
 
+    # 清除 Qt 全局 pixmap 缓存 — 必须在任何 QPixmap 加载之前，
+    # 否则 _bg_original.png 被覆盖后 QPixmap 仍返回旧图
+    QPixmapCache.clear()
+
     bg_color = cfg.get("background_color", "#f5f5f5")
     bg_image = cfg.get("background_image", "")
+    # 支持相对路径（相对于项目根目录）
+    if bg_image and not os.path.isabs(bg_image):
+        _proj_root = os.path.join(os.path.dirname(__file__), "..", "..")
+        bg_image = os.path.join(_proj_root, bg_image)
     bg_image_mode = cfg.get("background_image_mode", "fill")
     bg_image_opacity = cfg.get("background_image_opacity", 100)
     font_family = cfg.get("font_family", "PingFang SC")
     font_size = cfg.get("font_size", 16)
 
-    text_color = _text_color_for_bg(bg_color)
+    # ── 文字颜色：auto=自动计算, manual=使用配置中的值 ──
+    has_bg_image = bool(bg_image and os.path.isfile(bg_image))
+    text_color_mode = cfg.get("text_color_mode", "auto")
+    if has_bg_image and text_color_mode == "manual":
+        text_color = cfg.get("text_color", "#1d1d1f")
+    else:
+        text_color = _text_color_for_bg(bg_color)
+
+    # ── 可读性增强遮罩：仅在有背景图 + 启用时生效 ──
+    overlay_alpha = 0
+    overlay_dark = True
+    if has_bg_image and cfg.get("overlay_enabled", False):
+        strength = cfg.get("overlay_strength", "medium")
+        alpha_map = {"light": 20, "medium": 38, "strong": 64}
+        overlay_alpha = alpha_map.get(strength, 38)
+        # 白字用暗化遮罩，黑字用亮化遮罩
+        overlay_dark = (text_color == "#ffffff")
 
     # 控制台输出当前外观参数，方便调试
+    ov_str = cfg.get("overlay_strength", "medium") if overlay_alpha else "off"
     print(f"[外观应用] 字体={font_family} {font_size}px, 背景={bg_color}, "
           f"亮度={_luminance(bg_color)}, 文字={text_color}, "
-          f"图片={'有' if bg_image else '无'}")
+          f"模式={'手动' if text_color_mode == 'manual' else '自动'}, "
+          f"遮罩={overlay_alpha}/{ov_str}, "
+          f"图片={'有' if has_bg_image else '无'}")
 
     # ── 1. 全局字体（QApplication 级别，所有 Widget 的默认字体）──
     app = QApplication.instance()
@@ -222,11 +280,19 @@ def apply_appearance(main_window) -> None:
     # ── 2. 侧边栏图标/行高联动字号 ──
     settings_tab = getattr(main_window, "_settings", None)
     if settings_tab and hasattr(settings_tab, "refresh_sidebar"):
-        settings_tab.refresh_sidebar(font_size)
+        settings_tab.refresh_sidebar(font_size, text_color, has_bg_image)
 
     # ── 2.5. 面板文字颜色跟随背景切换 ──
     if settings_tab and hasattr(settings_tab, "refresh_text_color"):
         settings_tab.refresh_text_color(text_color)
+
+    # ── 2.6. 起卦面板行高/间距跟随字号缩放 ──
+    yijing_viewer = getattr(main_window, "_yijing", None)
+    if yijing_viewer:
+        if hasattr(yijing_viewer, "refresh_font_size"):
+            yijing_viewer.refresh_font_size(font_size)
+        if hasattr(yijing_viewer, "refresh_text_color"):
+            yijing_viewer.refresh_text_color(text_color)
 
     # ── 3. 背景 + 文字颜色（应用到 centralWidget）──
     central = main_window.centralWidget()
@@ -235,31 +301,90 @@ def apply_appearance(main_window) -> None:
 
     style_parts = [
         f"background-color: {bg_color};",
-        f"color: {text_color};",
     ]
 
-    # 如果有背景图片，预缩放后通过 CSS 叠加（支持透明 PNG）
+    # 如果有背景图片，预渲染到与 centralWidget 相同尺寸的画布
     if bg_image and os.path.isfile(bg_image):
-        cached = _scale_and_cache_image(bg_image, bg_image_opacity)
+        csize = central.size()
+        cached = _scale_and_cache_image(bg_image, bg_image_opacity, bg_image_mode,
+                                        csize.width(), csize.height(),
+                                        overlay_alpha, overlay_dark)
         escaped = cached.replace("\\", "/")  # Windows 反斜杠→正斜杠
-
-        # 拉伸模式 → CSS background-size
-        mode_css = {
-            "fill":   "100% 100%",         # 拉伸填满
-            "fit":    "contain",            # 适应窗口（保持比例）
-            "center": "auto",               # 居中（原始大小）
-            "tile":   "auto",               # 平铺（原始大小 + repeat）
-        }
-        bg_size = mode_css.get(bg_image_mode, "100% 100%")
-        bg_repeat = "repeat" if bg_image_mode == "tile" else "no-repeat"
-
         style_parts.append(
             f"background-image: url({escaped});"
-            f"background-repeat: {bg_repeat};"
-            f"background-position: center center;"
-            f"background-size: {bg_size};"
+            f"background-repeat: no-repeat;"
         )
 
+    # 先清空再设置，强制 Qt stylesheet 引擎重新解析 url() 加载新图片
+    central.setStyleSheet("")
     central.setStyleSheet(" ".join(style_parts))
+
+    # ── 3.5. QTabWidget 标签栏样式 — 跟随系统主题、无接缝、字号自适应 ──
+    tab = main_window.findChild(QTabWidget, "mainTab")
+    if tab:
+        # 检测系统深色/浅色模式，标签栏与 macOS 标题栏融合
+        try:
+            app_ref = QApplication.instance()
+            if app_ref and hasattr(app_ref, "styleHints"):
+                is_dark = app_ref.styleHints().colorScheme() == Qt.ColorScheme.Dark
+            else:
+                is_dark = False
+        except Exception:
+            is_dark = False
+
+        if is_dark:
+            tab_text = "#f0f0f0"        # 浅色文字（深色标题栏上）
+        else:
+            tab_text = "#1d1d1f"        # 深色文字（浅色标题栏上）
+
+        tab_pad_v = max(4, int(font_size * 0.35))   # 上下内边距 ~6px@16pt
+        tab_pad_h = max(12, int(font_size * 0.95))  # 左右内边距 ~15px@16pt
+        tab_bar_selected = "#007aff"  # 选中标签底部指示线
+
+        # toolbar/tab bar 背景设为 transparent，让 macOS 原生统一标题栏材质透过来
+        tab.setStyleSheet(f"""
+            QTabWidget {{
+                border: none;
+                padding: 0px;
+            }}
+            QTabWidget::pane {{
+                background: transparent;
+                border: none;
+                top: 0px;
+            }}
+            QToolBar#unifiedToolbar {{
+                background: transparent;
+                border: none;
+                padding: 0px;
+                margin: 0px;
+                spacing: 0px;
+            }}
+            QTabBar {{
+                background: transparent;
+            }}
+            QTabBar::tab {{
+                background: transparent;
+                border: none;
+                border-bottom: 2px solid transparent;
+                padding: {tab_pad_v}px {tab_pad_h}px;
+                margin: 0px;
+                color: {tab_text};
+            }}
+            QTabBar::tab:selected {{
+                border-bottom: 2px solid {tab_bar_selected};
+            }}
+            QTabBar::tab:hover:!selected {{
+                border-bottom: 2px solid rgba(0,122,255,0.3);
+            }}
+            QTabBar::tab:first {{
+                margin-left: 4px;
+            }}
+        """)
+        for i in range(tab.count()):
+            page = tab.widget(i)
+            # tab_settings 通过 WA_TranslucentBackground 实现透明，
+            # 不能用 QSS background: transparent（会传播到右侧 ScrollArea viewport）
+            if page and page.objectName() != "tab_settings":
+                page.setStyleSheet("background: transparent;")
 
     # 状态栏使用固定深灰色背景+白字，无需随外观联动刷新

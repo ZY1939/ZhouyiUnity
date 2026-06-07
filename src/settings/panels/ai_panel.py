@@ -89,9 +89,10 @@ DEFAULT_TEST_PROMPT = "你好，请问你是什么AI模型？请用中文简短�
 # QWidget、QGroupBox、QLabel 的文字色跟随外观背景切换
 PANEL_STYLE = """
 QWidget {{
-    color: {text_color};
+    background: transparent;
 }}
 QGroupBox {{
+    background: transparent;
     font-weight: bold;
     border: 1px solid #dcdcdc;
     border-radius: 8px;
@@ -161,6 +162,7 @@ QTextEdit#response_text {{
     color: #1d1d1f;
 }}
 QLabel {{
+    background: transparent;
     color: {text_color};
 }}
 """
