@@ -37,6 +37,24 @@ TEMPLATE_FILE = os.path.join(DATA_DIR, "01_乾.jsonc")
 
 
 def save_jsonc(path, data):
+    """将卦数据按模板格式写入 JSONC 文件。
+
+    功能说明：
+        从模板文件（01_乾.jsonc）提取格式骨架，通过 format_by_template
+        将数据格式化为与模板一致的 JSONC 文本（缩进、注释、字段顺序完全对齐），
+        然后写入目标文件。覆盖写入，调用前应确保 data 字段完整。
+
+    Args:
+        path (str): 目标 JSONC 文件的完整路径，如 "/path/to/content/01_乾.jsonc"
+        data (dict): 卦的完整数据字典
+
+    Returns:
+        None: 直接将格式化文本写入文件，无返回值
+
+    示例:
+        >>> data = {"id": 1, "name": "乾", "nishi": {"home": {"member": "父亲"}}}
+        >>> save_jsonc("content/01_乾.jsonc", data)
+    """
     template = load_jsonc(TEMPLATE_FILE)
     text = format_by_template(data, template, TEMPLATE_FILE)
     with open(path, "w", encoding="utf-8") as f:
@@ -53,7 +71,29 @@ DIRECTION_FIELD_PATH = "nishi.home.direction"
 
 
 def _load_field_config():
-    """从自身源码读取 MEMBER_FIELD_PATH / DIRECTION_FIELD_PATH 配置。"""
+    """从自身源码读取字段路径配置（MEMBER_FIELD_PATH / DIRECTION_FIELD_PATH）。
+
+    功能说明：
+        脚本首次运行时会检测或让用户选择家庭成员和方位的目标字段路径，
+        然后通过 _save_field_config 写入源码。此函数从源码中正则提取
+        这两个变量的值，避免每次都重新检测或询问。
+
+    Args:
+        无
+
+    Returns:
+        tuple: (member_path, direction_path) 两个元素的元组。
+            member_path (str): 家庭成员字段路径，如 "nishi.home.member"
+            direction_path (str): 方位字段路径，如 "nishi.home.direction"
+            若源码中未找到有效配置，对应元素为 None。
+
+    示例:
+        >>> member_path, direction_path = _load_field_config()
+        >>> member_path
+        'nishi.home.member'
+        >>> direction_path
+        'nishi.home.direction'
+    """
     with open(SELF, "r", encoding="utf-8") as f:
         src = f.read()
     result = {"member": None, "direction": None}
@@ -66,7 +106,24 @@ def _load_field_config():
 
 
 def _save_field_config(member_path, direction_path):
-    """将字段路径写入自身源码。"""
+    """将字段路径配置持久化写入自身源码。
+
+    功能说明：
+        这是"自修改"机制的一部分。用户选择字段路径后，脚本通过正则替换
+        将路径写入源码中 MEMBER_FIELD_PATH 和 DIRECTION_FIELD_PATH 变量
+        的赋值行，下次运行无需重新配置。
+
+    Args:
+        member_path (str): 家庭成员字段路径，如 "nishi.home.member"
+        direction_path (str): 方位字段路径，如 "nishi.home.direction"
+
+    Returns:
+        None: 无返回值，直接修改自身 .py 源码文件。
+
+    示例:
+        >>> _save_field_config("nishi.home.member", "nishi.home.direction")
+        # 源码中 MEMBER_FIELD_PATH 和 DIRECTION_FIELD_PATH 的值被更新
+    """
     with open(SELF, "r", encoding="utf-8") as f:
         src = f.read()
 
@@ -90,11 +147,34 @@ def _save_field_config(member_path, direction_path):
 
 
 def _list_text_fields():
-    """从模板提取所有文本类型的叶子字段。返回 [(路径, 样例值), ...]"""
+    """从模板提取所有文本类型（str）的叶子字段路径和样例值。
+
+    功能说明：
+        递归遍历模板 JSONC（01_乾.jsonc）的所有 dict 嵌套层级，
+        收集所有值为 str 类型的叶子字段。用于在首次运行时向用户展示
+        可选的目标字段列表，以便将家庭成员和方位写入正确的字段。
+
+        list、int、bool 等非字符串类型字段会被跳过，
+        因为家庭成员（"父亲"）和方位（"西北"）都是字符串。
+
+    Args:
+        无
+
+    Returns:
+        list[tuple]: 每个元素为 (路径, 样例值) 的元组列表。
+            路径如 "nishi.home.member"，样例值如 "父亲"。
+            列表按遍历顺序排列（深层嵌套的 dict 键有序）。
+
+    示例:
+        >>> fields = _list_text_fields()
+        >>> fields[:3]
+        [('full_name', '乾为天'), ('nishi.home.member', '父亲'), ('nishi.home.direction', '西北')]
+    """
     template = load_jsonc(TEMPLATE_FILE)
     fields = []
 
     def _walk(obj, prefix):
+        """递归遍历 dict 树，收集所有 str 类型的叶子字段路径。"""
         if isinstance(obj, dict):
             for k, v in obj.items():
                 path = f"{prefix}.{k}" if prefix else k
@@ -112,9 +192,29 @@ DEFAULT_DIRECTION_PATH = "nishi.home.direction"
 
 
 def _resolve_field_paths():
-    """获取 member/direction 字段路径。
-    优先配置 → 其次检查默认路径 nishi.home.member / nishi.home.direction
-    → 最后列出文本字段让用户选择。
+    """获取 member/direction 字段路径，三级决策。
+
+    功能说明：
+        这是路径解析的总控函数，采用三级决策链：
+        1. 优先读取已保存的配置（_load_field_config）
+        2. 其次检查默认路径 nishi.home.member / nishi.home.direction
+           是否在模板中存在（_list_text_fields），存在则保存配置供下次使用
+        3. 最后列出模板中所有文本字段，让用户交互式选择家庭成员和方位
+           各自对应的字段，选择后保存配置
+
+    Args:
+        无
+
+    Returns:
+        tuple: (member_path, direction_path) 两个元素的元组。
+            member_path (str|None): 家庭成员字段路径，无法确定时为 None
+            direction_path (str|None): 方位字段路径，无法确定时为 None
+
+    示例:
+        >>> member_path, dir_path = _resolve_field_paths()
+          🔍 检测到默认字段: nishi.home.member / nishi.home.direction
+        >>> member_path
+        'nishi.home.member'
     """
     member_path = _load_field_config()[0]
     direction_path = _load_field_config()[1]
@@ -173,7 +273,29 @@ def _resolve_field_paths():
 
 
 def _set_by_path(data, path, value):
-    """按点分隔路径设置嵌套值，中间 dict 自动创建。"""
+    """按点分隔路径设置嵌套字典值，中间层级自动创建。
+
+    功能说明：
+        例如路径 "nishi.home.member"，会在 data 中逐层创建
+        data["nishi"]、data["nishi"]["home"]（若不存在），然后
+        设置 data["nishi"]["home"]["member"] = value。
+
+        与 import_nishi_diagram.py 中的 _set_nested_path 功能相同。
+
+    Args:
+        data (dict): 目标字典（通常是 load_jsonc 返回的卦数据）
+        path (str): 点分隔的字段路径，如 "nishi.home.member"
+        value (any): 要设置的值（通常是 str 或 dict）
+
+    Returns:
+        None: 直接修改传入的 data 字典（原地修改）。
+
+    示例:
+        >>> data = {}
+        >>> _set_by_path(data, "nishi.home.member", "父亲")
+        >>> data
+        {'nishi': {'home': {'member': '父亲'}}}
+    """
     parts = path.split(".")
     current = data
     for i, part in enumerate(parts):
@@ -215,12 +337,38 @@ TRIGRAM_TO_MEMBER = {
 
 
 def _load_maps():
-    """从自身源码重新加载映射表"""
+    """从自身源码重新加载八卦映射表（TRIGRAM_TO_DIRECTION 和 TRIGRAM_TO_MEMBER）。
+
+    功能说明：
+        脚本支持"自修改"机制：当遇到内置映射表中没有的卦名时，用户可手动
+        输入对应值，脚本将其写入源码的 AUTO_MAP 区域。此函数重新从源码读取
+        映射表，确保在用户新增映射后立即生效。
+
+        使用 ast.literal_eval 安全解析字典（比 exec/eval 更安全）。
+
+    Args:
+        无
+
+    Returns:
+        tuple: (direction_map, member_map) 两个元素的元组。
+            direction_map (dict): 八卦名(str) → 方位(str) 的映射，
+                                  如 {"乾": "西北", "坤": "西南", ...}
+            member_map (dict): 八卦名(str) → 家庭成员(str) 的映射，
+                               如 {"乾": "父亲", "坤": "母亲", ...}
+
+    示例:
+        >>> dir_map, mem_map = _load_maps()
+        >>> dir_map["乾"]
+        '西北'
+        >>> mem_map["震"]
+        '长男'
+    """
     import ast
     with open(SELF, "r", encoding="utf-8") as f:
         src = f.read()
 
     def _extract_dict(var_name):
+        """从源码中用正则提取指定变量名的字典字面量并解析。"""
         m = re.search(rf"{var_name}\s*=\s*(\{{.+?\}})", src, re.DOTALL)
         if m:
             try:
@@ -233,7 +381,30 @@ def _load_maps():
 
 
 def _add_mapping(var_name, key, value):
-    """在 AUTO_MAP 区域内插入新的八卦映射条目"""
+    """在自身源码的 AUTO_MAP 区域内插入一条新的八卦映射条目。
+
+    功能说明：
+        这是"自修改"机制的核心函数。当遇到内置映射表中没有的卦名时，
+        用户输入对应的值后，此函数将该映射持久化写入脚本源码中对应字典的
+        内部（TRIGRAM_TO_DIRECTION 或 TRIGRAM_TO_MEMBER）。
+
+        定位策略：在源码行中搜索 === AUTO_MAP_START === 和
+        === AUTO_MAP_END === 标记之间的目标字典的右花括号前插入新条目。
+
+    Args:
+        var_name (str): 目标字典变量名，如 "TRIGRAM_TO_DIRECTION" 或 "TRIGRAM_TO_MEMBER"
+        key (str): 八卦名（键），如 "乾"、"震"
+        value (str): 映射值（值），如 "西北"、"长男"
+
+    Returns:
+        bool: True 表示成功插入并保存；False 表示无法定位插入位置。
+
+    示例:
+        >>> success = _add_mapping("TRIGRAM_TO_DIRECTION", "乾", "西北")
+          📝 已将 乾 → 西北 写入 TRIGRAM_TO_DIRECTION
+        >>> success
+        True
+    """
     with open(SELF, "r", encoding="utf-8") as f:
         lines = f.readlines()
 
@@ -275,7 +446,47 @@ def _add_mapping(var_name, key, value):
 
 
 def _resolve_mapping(trigram, map_dict, map_name, dict_name):
-    """尝试从映射表获取值。若不存在，询问用户并自修改脚本。"""
+    """尝试从映射表获取八卦对应的值，若不存在则询问用户并自修改脚本。
+
+    功能说明：
+        这是映射解析的入口函数。给定一个八卦名（如"乾"、"震"），
+        先从内存中的映射字典查找。如果找不到（说明是脚本内置映射表
+        未覆盖的卦名），则提示用户输入对应值，并通过 _add_mapping
+        将新映射写入脚本源码，以便下次自动生效。
+
+    Args:
+        trigram (str): 八卦名，如 "乾"、"坤"、"震" 等
+        map_dict (dict): 当前已加载的映射字典，如 {"乾": "西北", "坤": "西南"}
+        map_name (str): 映射的中文名称（用于提示信息），如 "方位"、"家庭成员"
+        dict_name (str): 映射表的变量名（用于 _add_mapping），
+                         如 "TRIGRAM_TO_DIRECTION"、"TRIGRAM_TO_MEMBER"
+
+    Returns:
+        tuple: (value, learned) 两个元素的元组。
+            value (str|None): 映射值（如 "西北"、"父亲"），
+                              映射失败或用户跳过时为 None
+            learned (bool): True 表示这是一个新学到的映射（用户刚输入的），
+                           False 表示来自已有映射表
+
+    示例:
+        >>> dir_map = {"乾": "西北", "坤": "西南"}
+        >>> val, learned = _resolve_mapping("乾", dir_map, "方位", "TRIGRAM_TO_DIRECTION")
+        >>> val
+        '西北'
+        >>> learned
+        False
+        >>> # 如果遇到未知卦名（如"离"），用户会被提示输入：
+        >>> val, learned = _resolve_mapping("离", dir_map, "方位", "TRIGRAM_TO_DIRECTION")
+          ⚠️  未知的卦名「离」不在 方位 映射表中。
+          当前 方位：{'乾': '西北', '坤': '西南'}
+          请输入「离」对应的方位，或回车跳过此卦：
+          → 南
+          📝 已将 离 → 南 写入 TRIGRAM_TO_DIRECTION
+        >>> val
+        '南'
+        >>> learned
+        True
+    """
     if trigram in map_dict:
         return map_dict[trigram], False
 
@@ -296,10 +507,40 @@ def _resolve_mapping(trigram, map_dict, map_name, dict_name):
 
 
 def main():
+    """自动填充 64 卦的 nishi.home 字段（家庭成员和方位）。
+
+    功能说明：
+        根据每卦的上卦(upper)确定家庭成员、下卦(lower)确定方位，
+        将结果写入对应 JSONC 文件的 nishi.home 字段。
+        首次运行自动检测或让用户选择字段路径并保存配置，
+        再次运行时直接使用已保存的配置。映射表内置在脚本源码中，
+        遇到未知卦名会交互式询问用户并自修改脚本以持久化新映射。
+
+    Args:
+        无（通过命令行直接运行：python3 MgrScript/import_home_fields.py）
+
+    Returns:
+        None: 执行结果通过控制台打印输出
+
+    示例:
+        $ cd src/data/yijing
+        $ python3 MgrScript/import_home_fields.py
+        🔍 检测到默认字段: nishi.home.member / nishi.home.direction
+        家庭成员字段: nishi.home.member
+        方位字段:     nishi.home.direction
+          ✅ 01_乾.jsonc: 乾→父亲, 乾→西北
+          ...
+        ✅ 已更新 64/64 卦
+    """
     member_path, direction_path = _resolve_field_paths()
     if not member_path or not direction_path:
         print("  ❌ 无法确定字段映射，退出")
         return
+    # 防御：确保路径不包含格式字符串残留
+    for label, p in [("家庭成员字段", member_path), ("方位字段", direction_path)]:
+        if "{" in p or "}" in p or p.strip() == "":
+            print(f"  ❌ {label}路径「{p}」非法，请检查脚本源码中的 FIELD_PATH 配置")
+            return
 
     print(f"  家庭成员字段: {member_path}")
     print(f"  方位字段:     {direction_path}")

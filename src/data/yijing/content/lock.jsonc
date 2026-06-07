@@ -3,6 +3,7 @@
   "id": 2,
   "name": 2,
   "full_name": 2,
+  "fullName_tc": 0,
   "symbol": 2,
   "binary": 2,
   "upper": 2,
@@ -23,7 +24,8 @@
     "diagram": {
       "all": 0,
       "description": 0,
-      "image_path": 0
+      "image_path": 0,
+      "content": 0
     },
     "home": {
       "all": 0,
@@ -31,11 +33,11 @@
       "direction": 0,
       "description": 0
     },
-    "bazi": {
+    "heluo": {
       "all": 0,
-      "young": 0,
-      "old": 0,
-      "year": 0
+      "xiantian": 0,
+      "houtian": 0,
+      "liunian": 0
     }
   },
   "history": {

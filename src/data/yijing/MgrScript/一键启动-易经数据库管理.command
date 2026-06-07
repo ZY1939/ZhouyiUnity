@@ -4,28 +4,169 @@
 # ──────────────────────────────────────────────────────
 # 选项1 → yijing_manager.py          数据库管理（编辑/备份/恢复/批量字段）
 # 选项2 → sync_structure.py          格式刷（以01_乾.jsonc为模板同步64卦结构）
-# 选项3 → import_home_fields.py      自动填充 nishi.home（上卦→成员, 下卦→方位）
-# 选项4 → import_nishi_diagram.py    自动填充倪师卦图解
-# 选项5 → lock_manager.py            字段锁管理
-# 选项6 → chmod 文件夹权限管理        只读/可写切换
+# 选项3 → 数据导入（二级菜单）
+#          ├ import_home_fields.py      自动填充 nishi.home（上卦→成员, 下卦→方位）
+#          ├ import_nishi_diagram.py    自动填充倪师卦图解（diagram.description）
+#          ├ import_humanity.py         导入倪师人间道（历史案例/象课/卦图内容/解说）
+#          └ import_heluo.py            导入倪师河洛（先天卦/后天卦/流年卦）
+# 选项4 → lock_manager.py            字段锁管理
+# 选项5 → chmod 文件夹权限管理        只读/可写切换
 # ──────────────────────────────────────────────────────
 cd "$(dirname "$0")"
 
+# ═══════════════════════════════════════════════════════
+# 数据导入 二级菜单
+# ═══════════════════════════════════════════════════════
+function submenu_import() {
+    while true; do
+        clear
+        echo "╔══════════════════════════════════════════════╗"
+        echo "║           数据导入 — 选择导入类型           ║"
+        echo "╠══════════════════════════════════════════════╣"
+        echo "║                                              ║"
+        echo "║  1. 自动填充 home 字段（上下卦→成员/方位）   ║"
+        echo "║  2. 自动填充倪师卦图解（diagram.description）║"
+        echo "║  3. 导入倪师人间道（history/象课/图解/解说） ║"
+        echo "║  4. 导入倪师河洛（先天卦/后天卦/流年卦）    ║"
+        echo "║                                              ║"
+        echo "║  0. 返回主菜单                               ║"
+        echo "║                                              ║"
+        echo "╚══════════════════════════════════════════════╝"
+        echo ""
+        read -p "请选择 (1/2/3/4/0): " sub_choice
+        case $sub_choice in
+            1)
+                clear
+                echo "╔══════════════════════════════════════════════╗"
+                echo "║       自动填充 home 字段（上下卦映射）       ║"
+                echo "╠══════════════════════════════════════════════╣"
+                echo "║                                              ║"
+                echo "║  规则：上卦(upper) → 家庭成员                ║"
+                echo "║        下卦(lower) → 方位                    ║"
+                echo "║                                              ║"
+                echo "║  映射：                                      ║"
+                echo "║  乾=父亲/西北  坤=母亲/西南  震=长男/东       ║"
+                echo "║  巽=长女/东南  坎=中男/北    离=中女/南       ║"
+                echo "║  艮=少男/东北  兑=少女/西                    ║"
+                echo "║                                              ║"
+                echo "║  目标字段：nishi.home.member                  ║"
+                echo "║            nishi.home.direction               ║"
+                echo "║  绕开锁机制，直接写入                        ║"
+                echo "║                                              ║"
+                echo "╚══════════════════════════════════════════════╝"
+                echo ""
+                read -p "按回车执行，输入 q/0 返回: " confirm
+                if [ "$confirm" = "q" ] || [ "$confirm" = "Q" ] || [ "$confirm" = "0" ]; then
+                    continue
+                fi
+                echo ""
+                python3 import_home_fields.py
+                echo ""
+                read -p "按回车返回..." dummy
+                ;;
+            2)
+                clear
+                echo "╔══════════════════════════════════════════════╗"
+                echo "║        自动填充倪师卦图解                    ║"
+                echo "╠══════════════════════════════════════════════╣"
+                echo "║                                              ║"
+                echo "║  数据源：diagram/倪师卦像图解.md             ║"
+                echo "║  目标字段：nishi.diagram.description（数组）  ║"
+                echo "║                                              ║"
+                echo "║  执行操作：                                  ║"
+                echo "║  ◇ 解析 MD 中 64 卦的卦圖象解条目            ║"
+                echo "║  ◇ 覆盖写入 description（替换原有内容）      ║"
+                echo "║  ◇ 自动备份 → content.bkp.zip                ║"
+                echo "║                                              ║"
+                echo "║  绕开锁机制，直接写入                        ║"
+                echo "║                                              ║"
+                echo "╚══════════════════════════════════════════════╝"
+                echo ""
+                read -p "按回车执行，输入 q/0 返回: " confirm
+                if [ "$confirm" = "q" ] || [ "$confirm" = "Q" ] || [ "$confirm" = "0" ]; then
+                    continue
+                fi
+                echo ""
+                python3 import_nishi_diagram.py
+                echo ""
+                read -p "按回车返回..." dummy
+                ;;
+            3)
+                clear
+                echo "╔══════════════════════════════════════════════╗"
+                echo "║         导入倪师人间道                       ║"
+                echo "╠══════════════════════════════════════════════╣"
+                echo "║                                              ║"
+                echo "║  数据源：nishi_ Humanity/md/                 ║"
+                echo "║          倪海厦天纪系列之人间道.md            ║"
+                echo "║  目标字段：                                  ║"
+                echo "║  ◇ history[0].description — 此卦历史案例     ║"
+                echo "║  ◇ xiang_ke — 象课（XXX之課 XXX之象）        ║"
+                echo "║  ◇ nishi.diagram.content — 卦图内容描述      ║"
+                echo "║  ◇ nishi.interpretation — 象课后解说         ║"
+                echo "║                                              ║"
+                echo "║  绕开锁机制，直接写入                        ║"
+                echo "║                                              ║"
+                echo "╚══════════════════════════════════════════════╝"
+                echo ""
+                read -p "按回车执行，输入 q/0 返回: " confirm
+                if [ "$confirm" = "q" ] || [ "$confirm" = "Q" ] || [ "$confirm" = "0" ]; then
+                    continue
+                fi
+                echo ""
+                python3 import_humanity.py
+                echo ""
+                read -p "按回车返回..." dummy
+                ;;
+            4)
+                clear
+                echo "╔══════════════════════════════════════════════╗"
+                echo "║         导入倪师河洛                         ║"
+                echo "╠══════════════════════════════════════════════╣"
+                echo "║                                              ║"
+                echo "║  数据源：nishi_Heluo/{序号}.{卦名}.md        ║"
+                echo "║  目标字段：                                  ║"
+                echo "║  ◇ nishi.heluo.xiantian — 先天卦段落(数组)  ║"
+                echo "║  ◇ nishi.heluo.houtian  — 后天卦段落(数组)  ║"
+                echo "║  ◇ nishi.heluo.liunian  — 流年卦段落(数组)  ║"
+                echo "║                                              ║"
+                echo "║  匹配：序号前缀 + 卦名繁简兼容                ║"
+                echo "║  绕开锁机制，直接写入                        ║"
+                echo "║                                              ║"
+                echo "╚══════════════════════════════════════════════╝"
+                echo ""
+                read -p "按回车执行，输入 q/0 返回: " confirm
+                if [ "$confirm" = "q" ] || [ "$confirm" = "Q" ] || [ "$confirm" = "0" ]; then
+                    continue
+                fi
+                echo ""
+                python3 import_heluo.py
+                echo ""
+                read -p "按回车返回..." dummy
+                ;;
+            0|q|Q) return ;;
+            *) echo "无效选择" && sleep 1 ;;
+        esac
+    done
+}
+
+# ═══════════════════════════════════════════════════════
+# 主菜单
+# ═══════════════════════════════════════════════════════
 while true; do
     clear
-    echo "╔══════════════════════════════════════╗"
-    echo "║       易经数据库工具集               ║"
-    echo "╠══════════════════════════════════════╣"
-    echo "║  1. 数据库管理（编辑/备份/恢复）     ║"
-    echo "║  2. 格式刷（同步结构+刷新格式）      ║"
-    echo "║  3. 自动填充 home 字段（上下卦映射） ║"
-    echo "║  4. 自动填充倪师卦图解               ║"
-    echo "║  5. 🔒字段锁管理                     ║"
-echo "║  6. 📁文件夹权限（只读/可写）        ║"
-    echo "║  q. 退出                             ║"
-    echo "╚══════════════════════════════════════╝"
+    echo "╔══════════════════════════════════════════╗"
+    echo "║       易经数据库工具集                   ║"
+    echo "╠══════════════════════════════════════════╣"
+    echo "║  1. 数据库管理（编辑/备份/恢复）         ║"
+    echo "║  2. 格式刷（同步结构+刷新格式）          ║"
+    echo "║  3. 📥数据导入（home/卦图解/人间道/河洛） ║"
+    echo "║  4. 🔒字段锁管理                         ║"
+    echo "║  5. 📁文件夹权限（只读/可写）            ║"
+    echo "║  q. 退出                                 ║"
+    echo "╚══════════════════════════════════════════╝"
     echo ""
-    read -p "请选择 (1/2/3/4/5/6/q): " choice
+    read -p "请选择 (1/2/3/4/5/q): " choice
     case $choice in
         1) echo "" && echo "→ 启动 yijing_manager.py 数据库管理工具..." && echo "" && python3 yijing_manager.py ;;
         2)
@@ -59,64 +200,9 @@ echo "║  6. 📁文件夹权限（只读/可写）        ║"
             echo ""
             python3 sync_structure.py
             ;;
-        3)
-            clear
-            echo "╔══════════════════════════════════════════════╗"
-            echo "║       自动填充 home 字段（上下卦映射）       ║"
-            echo "╠══════════════════════════════════════════════╣"
-            echo "║                                              ║"
-            echo "║  规则：上卦(upper) → 家庭成员                ║"
-            echo "║        下卦(lower) → 方位                    ║"
-            echo "║                                              ║"
-            echo "║  映射：                                      ║"
-            echo "║  乾=父亲/西北  坤=母亲/西南  震=长男/东       ║"
-            echo "║  巽=长女/东南  坎=中男/北    离=中女/南       ║"
-            echo "║  艮=少男/东北  兑=少女/西                    ║"
-            echo "║                                              ║"
-            echo "║  目标字段：nishi.home.member                  ║"
-            echo "║            nishi.home.direction               ║"
-            echo "║  绕开锁机制，直接写入                        ║"
-            echo "║                                              ║"
-            echo "╚══════════════════════════════════════════════╝"
-            echo ""
-            read -p "按回车执行，输入 q/0 返回主菜单: " confirm
-            if [ "$confirm" = "q" ] || [ "$confirm" = "Q" ] || [ "$confirm" = "0" ]; then
-                continue
-            fi
-            echo ""
-            python3 import_home_fields.py
-            echo ""
-            read -p "按回车返回主菜单..." dummy
-            ;;
-        4)
-            clear
-            echo "╔══════════════════════════════════════════════╗"
-            echo "║        自动填充倪师卦图解                    ║"
-            echo "╠══════════════════════════════════════════════╣"
-            echo "║                                              ║"
-            echo "║  数据源：diagram/倪师卦像图解.md             ║"
-            echo "║  目标字段：nishi.diagram.description（数组）  ║"
-            echo "║                                              ║"
-            echo "║  执行操作：                                  ║"
-            echo "║  ◇ 解析 MD 中 64 卦的卦圖象解条目            ║"
-            echo "║  ◇ 覆盖写入 description（替换原有内容）      ║"
-            echo "║  ◇ 自动备份 → content.bkp.zip                ║"
-            echo "║                                              ║"
-            echo "║  绕开锁机制，直接写入                        ║"
-            echo "║                                              ║"
-            echo "╚══════════════════════════════════════════════╝"
-            echo ""
-            read -p "按回车执行，输入 q/0 返回主菜单: " confirm
-            if [ "$confirm" = "q" ] || [ "$confirm" = "Q" ] || [ "$confirm" = "0" ]; then
-                continue
-            fi
-            echo ""
-            python3 import_nishi_diagram.py
-            echo ""
-            read -p "按回车返回主菜单..." dummy
-            ;;
-        5) echo "" && echo "→ 启动 lock_manager.py 字段锁管理..." && echo "" && python3 lock_manager.py ;;
-        6)
+        3) submenu_import ;;
+        4) echo "" && echo "→ 启动 lock_manager.py 字段锁管理..." && echo "" && python3 lock_manager.py ;;
+        5)
             PARENT_DIR="$(cd .. && pwd)"
 
             # 收集文件夹列表
@@ -124,12 +210,11 @@ echo "║  6. 📁文件夹权限（只读/可写）        ║"
             FOLDER_NAMES=()
             for d in "$PARENT_DIR"/*/; do
                 name=$(basename "$d")
-                case "$name" in
-                    content|diagram|MgrScript|MgrScript_bak)
-                        FOLDERS+=("$d")
-                        FOLDER_NAMES+=("$name")
-                        ;;
-                esac
+                # 排除非数据目录（Python缓存等）
+                if [ "$name" != "__pycache__" ] && [ "$name" != "MgrScript_bak" ]; then
+                    FOLDERS+=("$d")
+                    FOLDER_NAMES+=("$name")
+                fi
             done
 
             if [ ${#FOLDERS[@]} -eq 0 ]; then
@@ -146,7 +231,7 @@ echo "║  6. 📁文件夹权限（只读/可写）        ║"
                 echo "║       文件夹权限管理（只读/可写）             ║"
                 echo "╠══════════════════════════════════════════════╣"
                 echo "║                                              ║"
-                echo "║  当前目录: ../ (src/data/yijing)                 ║"
+                echo "║  当前目录: ../ (src/data/yijing)              ║"
                 echo "║                                              ║"
                 echo "║  只读(a-w) → 防止误改    可写(u+w) → 正常编辑 ║"
                 echo "║  支持多选：1,2 或 1 2 或 1 3-5               ║"
@@ -212,9 +297,7 @@ echo "║  6. 📁文件夹权限（只读/可写）        ║"
 
                 # 解析选择：替换逗号为空格，展开范围 3-5 → 3 4 5
                 N=$((${#FOLDERS[@]}))
-                # 将逗号替换为空格
                 normalized=$(echo "$folder_choice" | tr ',' ' ')
-                # 展开范围
                 expanded=""
                 for token in $normalized; do
                     if echo "$token" | grep -q '^[0-9]\+-[0-9]\+$'; then

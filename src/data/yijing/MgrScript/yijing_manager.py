@@ -38,7 +38,22 @@ from lock_utils import is_locked, is_content_locked, get_max_child_lock, sync_ne
 
 
 def save_jsonc(path, data):
-    """写入 JSONC 文件，输出格式与模板（01_乾.jsonc）严格一致"""
+    """将卦数据写入 JSONC 文件，输出格式与模板（01_乾.jsonc）严格一致。
+
+    使用 sync_structure 中的 format_by_template 对数据进行格式化，
+    确保所有 64 卦文件的字段顺序、缩进、注释样式与模板完全对齐。
+
+    Args:
+        path (str): 目标文件路径，如 "/path/to/content/01_乾.jsonc"
+        data (dict): 卦的完整数据字典，必须包含 id、name 等字段
+
+    Returns:
+        None: 直接将格式化文本写入文件
+
+    示例:
+        >>> data = {"id": 1, "name": "乾", "full_name": "乾为天"}
+        >>> save_jsonc("content/01_乾.jsonc", data)
+    """
     template = _load_jsonc_sync(TEMPLATE_FILE)
     text = format_by_template(data, template, TEMPLATE_FILE)
     with open(path, "w", encoding="utf-8") as f:
@@ -54,7 +69,22 @@ NUM_TO_XIANTIAN = {v: k for k, v in XIANTIAN_NUM.items()}
 # ═══════════════════════════════════════════════════════════════
 
 def load_jsonc(path):
-    """读取 JSONC 文件，去掉 // 注释后解析为 dict"""
+    """从文件读取 JSONC 并解析为 Python 字典。
+
+    先去除所有 // 开头的行注释，再将剩余内容作为标准 JSON 解析。
+    注意：如果 JSONC 中有块注释 /* */ 会导致解析失败。
+
+    Args:
+        path (str): JSONC 文件的完整路径
+
+    Returns:
+        dict: 解析后的卦数据字典
+
+    示例:
+        >>> data = load_jsonc("content/01_乾.jsonc")
+        >>> print(data["name"])
+        乾
+    """
     with open(path, "r", encoding="utf-8") as f:
         raw = f.read()
     cleaned = re.sub(r"//.*", "", raw)
@@ -62,7 +92,24 @@ def load_jsonc(path):
 
 
 def load_all():
-    """加载全部 64 卦，返回 {id: data}。跳过 lock.jsonc。"""
+    """加载 content/ 目录下所有 64 卦 JSONC 文件。
+
+    遍历 content/ 目录，读取每个 .jsonc 文件（跳过 lock.jsonc），
+    按卦的 id 字段建立索引。
+
+    Args:
+        无
+
+    Returns:
+        dict: {卦id(int): 卦数据(dict), ...}，例如 {1: {"id": 1, "name": "乾", ...}, ...}
+
+    示例:
+        >>> hex_dict = load_all()
+        >>> print(hex_dict[1]["name"])
+        乾
+        >>> print(len(hex_dict))
+        64
+    """
     result = {}
     for fname in sorted(os.listdir(DATA_DIR)):
         if fname.endswith(".jsonc") and fname != "lock.jsonc":
@@ -72,7 +119,22 @@ def load_all():
 
 
 def save_all(hex_dict):
-    """将 {id: data} 写回全部 64 个文件"""
+    """将内存中的全部 64 卦数据写回 content/ 下的各个 JSONC 文件。
+
+    根据每卦的 id 和 name 自动生成文件名（格式：{id:02d}_{name}.jsonc），
+    调用 save_jsonc 按模板格式写入。
+
+    Args:
+        hex_dict (dict): {卦id(int): 卦数据(dict), ...}，与 load_all() 返回格式相同
+
+    Returns:
+        None
+
+    示例:
+        >>> hex_dict = load_all()
+        >>> hex_dict[1]["full_name"] = "乾为天"
+        >>> save_all(hex_dict)  # 所有 64 卦被写回文件
+    """
     for hid, data in hex_dict.items():
         name = data["name"]
         fname = f"{hid:02d}_{name}.jsonc"
@@ -80,7 +142,24 @@ def save_all(hex_dict):
 
 
 def get_file_by_id(hid):
-    """根据卦 ID(1-64) 返回对应的文件路径，找不到返回 None"""
+    """根据卦 ID（1-64）查找并返回对应的 JSONC 文件路径。
+
+    在 content/ 目录中搜索以 "{hid:02d}_" 开头的文件（如 "01_乾.jsonc"），
+    不依赖文件名中的卦名部分，仅凭编号前缀匹配。
+
+    Args:
+        hid (int): 卦的 ID，范围 1-64
+
+    Returns:
+        str | None: 找到则返回完整文件路径，找不到则返回 None
+
+    示例:
+        >>> path = get_file_by_id(1)
+        >>> print(path)
+        /path/to/content/01_乾.jsonc
+        >>> get_file_by_id(99)
+        None
+    """
     prefix = f"{hid:02d}"
     for fname in sorted(os.listdir(DATA_DIR)):
         if fname.startswith(prefix) and fname.endswith(".jsonc"):
@@ -93,7 +172,25 @@ def get_file_by_id(hid):
 # ═══════════════════════════════════════════════════════════════
 
 def backup():
-    """列出 PARENT 下所有目录，用户选择备份。0=全部，q=退出。"""
+    """交互式备份 — 列出 yijing 数据目录下所有子目录，用户选择打包为 .bkp.zip。
+
+    跳过系统目录（__pycache__、.git 等），用户可选单个目录或"0"备份全部。
+    备份文件命名为 "{目录名}.bkp.zip"，存放在 PARENT 目录下。
+
+    Args:
+        无（通过 input() 交互获取用户选择）
+
+    Returns:
+        None
+
+    示例（交互流程）:
+        可备份的目录:
+          0. 全部备份
+          1. content/  (64 个文件)
+          q. 退出
+        请选择 (0=全部, q=退出): 1
+        ✅ content/ (64 文件) → content.bkp.zip
+    """
     SKIP_DIRS = {"__pycache__", ".git", ".claude", "node_modules", ".DS_Store"}
     dirs = [d for d in sorted(os.listdir(PARENT))
             if os.path.isdir(os.path.join(PARENT, d)) and not d.startswith(".") and d not in SKIP_DIRS]
@@ -141,7 +238,27 @@ def backup():
 
 
 def restore():
-    """列出 PARENT 下所有 .bkp.zip 文件，用户选择恢复。0=全部，q=退出。"""
+    """交互式恢复 — 列出 PARENT 下所有 .bkp.zip 备份文件，用户选择解压恢复。
+
+    支持选择单个备份或"0"恢复全部。恢复前会弹出确认提示（y/1 确认），
+    解压后覆盖目标目录的现有文件。备份文件名格式为 "{目录名}.bkp.zip"。
+
+    Args:
+        无（通过 input() 交互获取用户选择）
+
+    Returns:
+        None
+
+    示例（交互流程）:
+        可恢复的备份:
+          0. 全部恢复
+          1. content.bkp.zip  (256 KB)
+          q. 退出
+        请选择 (0=全部, q=退出): 1
+        [警告] 恢复将覆盖 content/ 中的现有文件
+        [确认] 恢复？(y/1=继续, 其他取消): y
+        ✅ content.bkp.zip → content/ (64 文件已恢复)
+    """
     bkps = sorted([f for f in os.listdir(PARENT) if f.endswith(".bkp.zip")])
     if not bkps:
         print("❌ 没有找到 .bkp.zip 备份文件")
@@ -197,9 +314,26 @@ def restore():
 # ═══════════════════════════════════════════════════════════════
 
 def _parse_path(path):
-    """解析路径字符串 'nishi.diagram.description[0]' 或 'lines[*].nishi'
-    返回 [(key, index_or_None_or_wildcard), ...]
-    idx='*' 表示通配符（遍历数组所有元素）"""
+    """将点号分隔的字段路径字符串解析为步骤列表。
+
+    支持数组下标 [数字] 和通配符 [*]。
+    通配符 * 表示"匹配数组的所有元素"（用于批量操作）。
+
+    Args:
+        path (str): 字段路径，如 "nishi.diagram.description[0]" 或 "lines[*].yaoci"
+
+    Returns:
+        list[tuple]: 步骤列表，每个元素为 (key, idx)，idx 可以是 None(非数组)、
+                     int(具体下标) 或 "*"(通配符)
+
+    示例:
+        >>> _parse_path("lines[0].yaoci")
+        [("lines", 0), ("yaoci", None)]
+        >>> _parse_path("lines[*].text")
+        [("lines", "*"), ("text", None)]
+        >>> _parse_path("name")
+        [("name", None)]
+    """
     steps = []
     for part in path.split("."):
         m = re.match(r'^(.+?)\[(\d+|\*)\]$', part)
@@ -212,7 +346,27 @@ def _parse_path(path):
 
 
 def _get_nested(data, path):
-    """读取嵌套值，支持数组下标 [0] 和通配符 [*]（返回第一个元素的值）。"""
+    """按字段路径从嵌套字典中读取值。
+
+    支持普通 key 导航、数组下标 [数字] 和通配符 [*]。
+    通配符 [*] 会取数组的第一个元素的值。
+
+    Args:
+        data (dict): 要读取的卦数据字典
+        path (str): 字段路径，如 "lines[0].yaoci" 或 "nishi.*.text"
+
+    Returns:
+        Any | None: 路径对应的值；如果路径中任何一步不存在，返回 None
+
+    示例:
+        >>> data = {"lines": [{"yaoci": "潜龙勿用"}, {"yaoci": "见龙在田"}]}
+        >>> _get_nested(data, "lines[0].yaoci")
+        "潜龙勿用"
+        >>> _get_nested(data, "lines[*].yaoci")  # 通配符取第一个
+        "潜龙勿用"
+        >>> _get_nested(data, "not_exist")
+        None
+    """
     steps = _parse_path(path)
     current = data
     for key, idx in steps:
@@ -236,13 +390,50 @@ def _get_nested(data, path):
 
 
 def _set_nested(data, path, value):
-    """设置嵌套值，支持数组下标 [0] 和通配符 [*]（遍历所有元素）。"""
+    """按字段路径在嵌套字典中设置值（原地修改）。
+
+    自动创建路径中不存在的中间层（空 dict 或空 list）。
+    支持普通 key、数组下标 [数字] 和通配符 [*]（通配符会遍历数组所有元素设置相同值）。
+
+    Args:
+        data (dict): 要修改的卦数据字典（原地修改，不返回新对象）
+        path (str): 字段路径，如 "lines[0].yaoci" 或 "lines[*].text"
+        value (Any): 要设置的新值
+
+    Returns:
+        None
+
+    示例:
+        >>> data = {"lines": [{"yaoci": "旧值"}]}
+        >>> _set_nested(data, "lines[0].yaoci", "新值")
+        >>> print(data["lines"][0]["yaoci"])
+        新值
+    """
     steps = _parse_path(path)
     _set_nested_steps(data, steps, value)
 
 
 def _set_nested_steps(data, steps, value):
-    """递归实现 _set_nested，支持 [*] 通配符。"""
+    """递归实现 _set_nested 的核心逻辑，直接操作解析后的步骤列表。
+
+    支持 [*] 通配符（遍历数组所有元素）。中间层不存在时自动创建
+    （dict 或 list，取决于后续步骤是否有索引）。
+
+    Args:
+        data (dict | list): 当前递归层的数据容器
+        steps (list[tuple]): 由 _parse_path 解析出的步骤列表
+        value (Any): 要设置的新值
+
+    Returns:
+        None
+
+    示例:
+        >>> data = {}
+        >>> steps = _parse_path("nishi.text")
+        >>> _set_nested_steps(data, steps, "hello")
+        >>> print(data)
+        {"nishi": {"text": "hello"}}
+    """
     if not steps:
         return
     key, idx = steps[0]
@@ -293,7 +484,25 @@ def _set_nested_steps(data, steps, value):
 
 
 def _print_fields(data, prefix="", show_empty=True):
-    """递归打印一个 dict 的所有叶子字段路径和值，数组逐元素展示"""
+    """递归打印字典/列表的所有叶子字段路径和值（用于控制台查看）。
+
+    数组元素逐条展示，如 lines[0].yaoci、lines[1].yaoci。
+    超过 80 字符的值会被截断并追加"…"。
+
+    Args:
+        data (dict | list): 要打印的卦数据
+        prefix (str): 路径前缀，内部递归使用，初始调用传空字符串
+        show_empty (bool): True 时打印空值字段（空字符串/"（待补充）"等），
+                           False 时跳过
+
+    Returns:
+        None: 直接输出到控制台
+
+    示例:
+        >>> _print_fields({"name": "乾", "lines": [{"yaoci": "潜龙"}]})
+          name: 乾
+          lines[0].yaoci: 潜龙
+    """
     if isinstance(data, dict):
         for k, v in data.items():
             full_key = f"{prefix}.{k}" if prefix else k
@@ -325,14 +534,46 @@ def _print_fields(data, prefix="", show_empty=True):
 
 
 def _trunc(s, max_len):
+    """截断字符串用于控制台显示，超出长度时追加省略号"…"。
+
+    Args:
+        s (str): 原始字符串
+        max_len (int): 最大允许的字符长度
+
+    Returns:
+        str: 截断后的字符串
+
+    示例:
+        >>> _trunc("hello world", 5)
+        "hello…"
+        >>> _trunc("hi", 5)
+        "hi"
+    """
     return s if len(s) <= max_len else s[:max_len] + "…"
 
 
 def _list_data_fields(data):
-    """从实际数据提取所有叶子字段路径和值，返回 [(path, value), ...]"""
+    """从卦数据字典中提取所有叶子字段的路径和值。
+
+    遍历所有嵌套层级，生成扁平化的 (路径, 值) 列表。
+    数组元素逐条展开（如 lines[0].yaoci、lines[1].yaoci）。
+
+    Args:
+        data (dict): 卦的完整数据字典
+
+    Returns:
+        list[tuple]: [(路径字符串, 值), ...]，
+                     如 [("name", "乾"), ("lines[0].yaoci", "潜龙勿用"), ...]
+
+    示例:
+        >>> data = {"name": "乾", "lines": [{"yaoci": "潜龙"}]}
+        >>> _list_data_fields(data)
+        [("name", "乾"), ("lines[0].yaoci", "潜龙")]
+    """
     fields = []
 
     def _walk(obj, prefix):
+        """递归遍历实际卦数据，展开所有数组元素，收集叶子字段的路径和值。"""
         if isinstance(obj, dict):
             for k, v in obj.items():
                 path = f"{prefix}.{k}" if prefix else k
@@ -354,7 +595,32 @@ def _list_data_fields(data):
 
 
 def edit_hexagram(hid):
-    """交互式编辑单卦 — 列出所有字段，按序号选择编辑"""
+    """交互式编辑单卦 — 列出该卦所有叶子字段，按序号选择编辑。
+
+    循环显示字段列表，用户输入序号选择要编辑的字段，
+    然后输入新值（支持自动类型转换：bool/int/float/list）。
+    受内容锁保护的字段会阻止编辑并提示原因。
+    输入 0 或 q 返回上级菜单。
+
+    Args:
+        hid (int): 要编辑的卦 ID，范围 1-64
+
+    Returns:
+        None
+
+    示例（交互流程）:
+        正在编辑: 乾 (乾为天)
+        ────────────────────────
+          1. name: 乾
+          2. lines[0].yaoci: 潜龙勿用
+          ...
+          0. 返回上级
+        选择字段序号 (0返回): 1
+        📝 name
+        当前值: 乾
+        新值 (回车取消): 新乾
+        ✅ 已更新 name
+    """
     filepath = get_file_by_id(hid)
     if not filepath:
         print(f"❌ 未找到 ID={hid} 的卦文件")
@@ -435,11 +701,31 @@ def edit_hexagram(hid):
 # ═══════════════════════════════════════════════════════════════
 
 def _list_template_fields():
-    """从模板提取所有字段路径（含容器和叶子）。返回 [(路径字符串, 样例值, 类型名), ...]"""
+    """从模板文件（01_乾.jsonc）提取所有字段路径、样例值和类型。
+
+    遍历模板的所有嵌套层级，包括容器字段（dict/list[dict]）和叶子字段。
+    容器字段显示其子字段数量而非实际值。
+
+    Args:
+        无
+
+    Returns:
+        list[tuple]: [(路径字符串, 样例值, 类型名), ...]，
+                     类型名如 "str"/"int"/"dict"/"list"/"list[dict]"
+
+    示例:
+        >>> fields = _list_template_fields()
+        >>> for path, val, typ in fields[:3]:
+        ...     print(f"{path}: {val} ({typ})")
+        id: 1 (int)
+        name: 乾 (str)
+        lines: [6 items] (list[dict])
+    """
     template = load_jsonc(TEMPLATE_FILE)
     fields = []
 
     def _walk(obj, prefix):
+        """递归遍历模板数据，收集字段路径、预览和类型（用 [*] 通配对象数组）。"""
         if isinstance(obj, dict):
             for k, v in obj.items():
                 path = f"{prefix}.{k}" if prefix else k
@@ -459,7 +745,26 @@ def _list_template_fields():
 
 
 def _show_field_list(fields):
-    """打印带序号的字段列表（单行格式）"""
+    """在控制台打印带序号的字段列表（供 _pick_field/_pick_fields 调用）。
+
+    每行显示序号、路径、预览值（截断40字符）和类型。空值显示"(空)"。
+    末尾打印"0. 返回"选项。
+
+    Args:
+        fields (list[tuple]): 由 _list_template_fields 或 _list_data_fields 返回的列表，
+                              每个元素为 (路径, 值, 类型)
+
+    Returns:
+        None: 直接输出到控制台
+
+    示例:
+        >>> _show_field_list([("name", "乾", "str"), ("id", 1, "int")])
+          ────────────────────────
+            1. name: 乾  (str)
+            2. id: 1  (int)
+            0. 返回
+          ────────────────────────
+    """
     print("  " + "─" * 55)
     for i, (path, val, typ) in enumerate(fields, 1):
         if val in (None, "", "（待补充）", [], {}):
@@ -472,8 +777,23 @@ def _show_field_list(fields):
 
 
 def _pick_field(fields, prompt="请选择字段"):
-    """让用户按序号选择字段，循环直到选中或按0退出。
-    返回 (path_str, field_name) 或 (None, None)。
+    """交互式单选字段 — 显示字段列表，让用户按序号选择一个字段。
+
+    循环直到用户选中有效序号（返回路径信息）或按 0/q 退出（返回 None）。
+    输入无效时提示"无效选择"并重新显示列表。
+
+    Args:
+        fields (list[tuple]): 由 _list_template_fields 返回的字段列表
+        prompt (str): 输入提示文字
+
+    Returns:
+        tuple | tuple: (路径字符串, 叶子字段名) 或 (None, None)
+
+    示例:
+        >>> fields = [("name", "乾", "str"), ("id", 1, "int")]
+        >>> path, key = _pick_field(fields, "选择要修改的字段")
+        # 用户输入 1 → ("name", "name")
+        # 用户输入 0 → (None, None)
     """
     while True:
         _show_field_list(fields)
@@ -494,8 +814,30 @@ def _pick_field(fields, prompt="请选择字段"):
 
 
 def _parse_selection(choice, max_n):
-    """解析多选输入，支持 单个序号 / 空格逗号分隔 / 范围(如 1-3)。
-    返回已去重的有序索引列表(0-based)。无效索引被忽略。"""
+    """解析用户的多选输入字符串，返回去重排序的 0-based 索引列表。
+
+    支持三种格式：
+    - 单个序号： "3"
+    - 空格/逗号分隔： "1 3 5" 或 "1,3,5"
+    - 范围： "1-5"
+    - 混合： "1 3-5 8"
+    无效索引和超出范围的序号会被静默忽略。结果自动去重并保持输入顺序。
+
+    Args:
+        choice (str): 用户输入的原始字符串
+        max_n (int): 字段总数（序号上限）
+
+    Returns:
+        list[int]: 0-based 索引列表，如 [0, 2, 3, 4]（已去重）
+
+    示例:
+        >>> _parse_selection("1 3-5", 10)
+        [0, 2, 3, 4]
+        >>> _parse_selection("99", 10)  # 超出范围，被忽略
+        []
+        >>> _parse_selection("3 1 3", 10)  # 去重
+        [2, 0]
+    """
     indices = []
     choice = choice.replace(",", " ")
     for part in choice.split():
@@ -530,7 +872,25 @@ def _parse_selection(choice, max_n):
 
 
 def _pick_fields(fields, prompt="请选择字段"):
-    """多选版字段选择 — 支持 25 26 1-3 格式。返回 [(path_str, leaf), ...]"""
+    """交互式多选字段 — 支持空格分隔、逗号分隔、范围格式。
+
+    用户输入如 "1 3 5-7"，解析后返回所有选中字段的路径信息。
+    循环直到用户选中至少一个有效字段或按 0/q 退出。
+
+    Args:
+        fields (list[tuple]): 由 _list_template_fields 返回的字段列表
+        prompt (str): 输入提示文字
+
+    Returns:
+        list[tuple]: [(路径字符串, 叶子字段名), ...]，
+                     空列表表示用户取消选择
+
+    示例:
+        >>> fields = [("name", "乾", "str"), ("id", 1, "int"), ("full_name", "乾为天", "str")]
+        >>> result = _pick_fields(fields, "选择要删除的字段")
+        # 用户输入 "1 3" → [("name", "name"), ("full_name", "full_name")]
+        # 用户输入 "0" → []
+    """
     while True:
         _show_field_list(fields)
         choice = input(f"  {prompt} (支持多选: 1 3 5-7): ").strip()
@@ -552,7 +912,26 @@ def _pick_fields(fields, prompt="请选择字段"):
 # ═══════════════════════════════════════════════════════════════
 
 def _lock_level_icon(level, inherited=False):
-    """锁级别 → 图标。0→'0', 1→'🔒', 2→'🔒*'。inherited=True 加 ↑。"""
+    """将锁级别数字转换为显示图标。
+
+    级别 0=无锁，1=结构锁(🔒)，2=内容锁(🔒*)。
+    继承的锁追加 ↑ 标记，用于区分"自身锁定"和"被上级锁定"。
+
+    Args:
+        level (int): 锁级别（0/1/2），>=2 统一视为内容锁
+        inherited (bool): 是否为继承锁（来自上级容器），默认 False
+
+    Returns:
+        str: 锁图标字符串，如 "🔒"、"🔒*"、"🔒↑"、"0"
+
+    示例:
+        >>> _lock_level_icon(0)
+        '0'
+        >>> _lock_level_icon(1)
+        '🔒'
+        >>> _lock_level_icon(2, inherited=True)
+        '🔒*↑'
+    """
     if level >= 2:
         return '🔒*↑' if inherited else '🔒*'
     if level == 1:
@@ -561,10 +940,26 @@ def _lock_level_icon(level, inherited=False):
 
 
 def _get_lock_display(path_str, is_container, child_level=0):
-    """获取字段的锁定显示状态。
-    - 自身锁图标: '🔒*', '🔒', '0'
-    - 被上级锁定: '🔒*↑', '🔒↑'
-    - 容器有更高子级锁: '🔒(🔒*)', '0(🔒*)' 等
+    """获取字段在锁管理界面中的锁定显示状态字符串。
+
+    综合三方面信息：
+    - 自身是否有锁（🔒 结构锁 / 🔒* 内容锁）
+    - 是否被上级容器继承锁定（加 ↑ 标记）
+    - 容器字段：如果子级有更高锁级别，追加括号显示（如 "🔒(🔒*)"）
+
+    Args:
+        path_str (str): 字段路径，如 "lines[*].yaoci" 或 "nishi"
+        is_container (bool): 该字段是否为容器（dict 或 list[dict]）
+        child_level (int): 子级字段中的最高锁级别，非容器字段传 0
+
+    Returns:
+        str: 锁显示字符串，如 "🔒*"、"🔒↑"、"0"、"🔒(🔒*)" 等
+
+    示例:
+        >>> _get_lock_display("lines[*].yaoci", is_container=False)
+        '0'
+        >>> _get_lock_display("nishi", is_container=True, child_level=2)
+        '0(🔒*)'
     """
     from lock_utils import load_lock
     lock = load_lock()
@@ -634,7 +1029,33 @@ def _get_lock_display(path_str, is_container, child_level=0):
 
 
 def manage_locks():
-    """交互式字段锁管理 — 列出字段，支持导航进入子目录、多选锁定/解锁"""
+    """交互式字段锁管理界面 — 支持导航进入子容器、多选设置锁级别。
+
+    特性：
+    - 显示面包屑导航，进入子容器用 --序号 命令
+    - 多选支持 "1 3 5-7" 或 "*" 全选
+    - 锁级别：0=解锁、1=结构锁(🔒)、2=内容锁(🔒*)
+    - 锁定状态实时刷新，显示继承标记和子级锁信息
+
+    Args:
+        无（完全通过 input() 交互驱动）
+
+    Returns:
+        None
+
+    示例（交互流程）:
+        ═══ 字段锁管理 [根层级] ═══
+          1.  0       id  (int)
+          2.  🔒      name  (str)
+          3.  🔒*↑    lines ▶  ([6 items] list[dict])
+        → 1 2    (选择第1、2个字段)
+        已选 2 个字段:
+          id  (当前: 0)
+          name  (当前: 🔒)
+        锁级别: 0=解锁 1=🔒结构锁 2=🔒*内容锁
+        → 1
+        ✅ id → 🔒 已结构锁
+    """
     from lock_utils import load_lock
 
     template = load_jsonc(TEMPLATE_FILE)
@@ -791,8 +1212,25 @@ def manage_locks():
 
 
 def _resolve_field_path(path_str):
-    """把模板路径字符串解析为 (parent_keys, leaf_key)。
-    parent_keys 不含 [*]，用于定位容器。"""
+    """将字段路径字符串拆分为父级路径列表和叶子字段名。
+
+    父级路径中的 [*] 通配符会被清除（因为定位容器时不需要索引）。
+
+    Args:
+        path_str (str): 字段路径，如 "lines[*].yaoci" 或 "nishi.text"
+
+    Returns:
+        tuple: (parent_keys: list[str], leaf_key: str)，
+               parent_keys 用来定位容器，leaf_key 用来定位叶子字段
+
+    示例:
+        >>> _resolve_field_path("lines[*].yaoci")
+        (["lines"], "yaoci")
+        >>> _resolve_field_path("nishi")
+        ([], "nishi")
+        >>> _resolve_field_path("nishi.diagram.description[0]")
+        (["nishi", "diagram"], "description[0]")
+    """
     parts = path_str.split(".")
     *parent_keys, leaf = parts
     # 清理 parent_keys 中的 [*] 标记
@@ -801,7 +1239,25 @@ def _resolve_field_path(path_str):
 
 
 def _find_container_by_keys(data, keys):
-    """根据 keys 列表在 data 中定位容器。如果是 list 则返回 list 本身。"""
+    """按 keys 列表在数据字典中逐级导航，定位到目标容器。
+
+    如果中间某层是 list，停止导航并返回该 list 本身。
+    用于批量操作时定位"待修改的字段所在的父级容器"。
+
+    Args:
+        data (dict): 卦的数据字典
+        keys (list[str]): 导航路径，如 ["lines"] 或 ["nishi", "diagram"]
+
+    Returns:
+        dict | list | None: 定位到的容器；路径中任何一步不存在则返回 None
+
+    示例:
+        >>> data = {"lines": [{"yaoci": "值"}, {"yaoci": "值2"}]}
+        >>> _find_container_by_keys(data, ["lines"])
+        [{"yaoci": "值"}, {"yaoci": "值2"}]
+        >>> _find_container_by_keys(data, ["nishi"])
+        None
+    """
     current = data
     for k in keys:
         if isinstance(current, list):
@@ -814,7 +1270,26 @@ def _find_container_by_keys(data, keys):
 
 
 def batch_rename_field():
-    """批量重命名 — 循环列出字段，0返回"""
+    """批量重命名 — 对所有 64 卦的指定字段执行重命名操作。
+
+    用户先选一个字段，再输入新字段名。操作前会检查锁状态
+    （被锁定字段不可重命名），确认后遍历 64 个文件执行重命名。
+    同步更新 lock.jsonc 中的锁路径（通过 sync_rename_field）。
+
+    Args:
+        无（通过 input() 交互驱动）
+
+    Returns:
+        None
+
+    示例（交互流程）:
+        ── 批量字段重命名 ──
+        请选择要重命名的字段 (输入序号): 5
+        「old_name」→ 新字段名 (0取消): new_name
+        [警告] 将对64个文件执行重命名: old_name → new_name
+        [确认] 重命名？(y/1=继续, 其他取消): y
+        ✅ 已更新 64 处: old_name → new_name
+    """
     print("\n  ── 批量字段重命名 ──")
     while True:
         fields = _list_template_fields()
@@ -865,7 +1340,28 @@ def batch_rename_field():
 
 
 def batch_delete_field():
-    """批量删除字段 — 多选支持 1 3 5-7 格式，0返回"""
+    """批量删除字段 — 多选支持 "1 3 5-7" 格式，从所有 64 卦中删除指定字段。
+
+    功能要点：
+    - 支持多选（空格/逗号分隔/范围）
+    - 删除前检查锁状态（被锁定字段禁止删除）
+    - 警告含有实际内容的字段
+    - 操作后同步更新 lock.jsonc
+
+    Args:
+        无（通过 input() 交互驱动）
+
+    Returns:
+        None
+
+    示例（交互流程）:
+        ── 批量删除字段 ──
+        请选择字段 (支持多选: 1 3 5-7): 3-5
+        [警告] 选择删除: field_a  field_b  field_c
+        [警告] 以下字段含有实际内容: field_a
+        [确认] 删除？(y/1=继续, 其他取消): y
+        ✅ 已从 64 处删除「field_a」
+    """
     print("\n  ── 批量删除字段 ──")
     while True:
         fields = _list_template_fields()
@@ -945,7 +1441,30 @@ def batch_delete_field():
 
 
 def batch_clear_field():
-    """批量置空 — 多选支持 1 3 5-7 格式，0返回"""
+    """批量字段置空 — 将选中字段的值重置为对应类型的空值。
+
+    根据模板中字段的原始类型智能选择空值：
+    - 字符串 → ""
+    - 数字 → None
+    - 布尔 → False
+    - 列表 → []
+    - 字典 → {}
+    被内容锁保护的字段无法置空。操作前显示每个字段将变为的具体空值。
+
+    Args:
+        无（通过 input() 交互驱动）
+
+    Returns:
+        None
+
+    示例（交互流程）:
+        ── 批量字段置空 ──
+        请选择字段 (支持多选: 1 3 5-7): 1 3
+        [警告] 将「name」重置为空值: ""
+        [警告] 将「count」重置为空值: None
+        [确认] 置空？(y/1=继续, 其他取消): y
+        ✅ 已置空 64 个文件的「name」
+    """
     print("\n  ── 批量字段置空 ──")
     while True:
         fields = _list_template_fields()
@@ -1022,13 +1541,31 @@ def batch_clear_field():
 
 
 def _list_template_containers():
-    """从模板提取所有可作为容器的路径（dict 和包含 dict 的 list）。
-    返回 [(路径字符串, 容器类型), ...]，如 [('', '根层级'), ('nishi', 'dict'), ('lines[*]', 'list')]
+    """从模板提取所有容器字段路径（可容纳子字段的 dict 或 list[dict]）。
+
+    用于 batch_add_field 选择"在哪个容器下添加字段"。
+    根层级用空字符串 '' 表示，list[dict] 用 [*] 通配符标记。
+
+    Args:
+        无
+
+    Returns:
+        list[tuple]: [(路径字符串, 描述), ...]，
+                     如 [('', '根层级'), ('nishi', '{5 fields}'), ('lines[*]', '[6 items]')]
+
+    示例:
+        >>> containers = _list_template_containers()
+        >>> for path, desc in containers[:3]:
+        ...     print(f"{path or '根'}: {desc}")
+        根: 根层级
+        nishi: {5 fields}
+        lines[*]: [6 items]
     """
     template = load_jsonc(TEMPLATE_FILE)
     containers = [("", "根层级")]
 
     def _walk(obj, prefix):
+        """递归遍历模板，收集所有容器字段（dict 和对象数组）的路径和预览。"""
         if isinstance(obj, dict):
             for k, v in obj.items():
                 path = f"{prefix}.{k}" if prefix else k
@@ -1045,7 +1582,38 @@ def _list_template_containers():
 
 
 def batch_add_field():
-    """批量添加字段 — 选位置后循环添加，0返回上级，/q直接退到主菜单"""
+    """批量添加字段 — 选择目标容器后，循环向所有 64 卦添加新字段。
+
+    流程：
+    1. 选择添加位置（容器），如根层级、nishi、lines[*] 等
+    2. 输入新字段名（会检查是否重名）
+    3. 选择字段类型：文本/数字、对象{}、数组[]
+    4. 确认后遍历 64 个文件，在目标容器下添加该字段（默认空值）
+    5. 同步更新 lock.jsonc
+
+    支持命令：
+    - 输入 0 返回位置选择
+    - 输入 /q 直接退到主菜单
+
+    Args:
+        无（通过 input() 交互驱动）
+
+    Returns:
+        None
+
+    示例（交互流程）:
+        ── 批量添加字段 ──
+        选择添加位置:
+          1. 根层级  (根层级)
+          2. nishi  ({5 fields})
+          0. 返回上级
+        请选择目标位置 (输入序号): 1
+        当前位置: 根层级 (根层级)
+        新字段名 (0返回位置选择, /q退出): new_field
+        字段类型: 1.文本/数字  2.对象{}  3.数组[]
+        请选择 (0取消, /q退出, 默认1): 1
+        ✅ 已添加字段「new_field」到 64 处
+    """
     print("\n  ── 批量添加字段 ──")
     containers = _list_template_containers()
 
@@ -1314,6 +1882,38 @@ def _resolve_hexagram(prompt_text):
 # ═══════════════════════════════════════════════════════════════
 
 def main():
+    """易经数据库管理工具 — 命令行交互式主入口。
+
+    功能说明：
+        提供交互式菜单驱动界面，支持以下操作：
+        1. 编辑单卦 — 选择卦后列出所有字段，按序号编辑任意字段
+        2. 查看单卦 — 解析并打印某卦的全部字段内容
+        3. 备份数据库 — 将 content/ 打包为 .bkp.zip
+        4. 恢复数据库 — 从 .bkp.zip 解压恢复
+        5. 批量字段操作 — 重命名/删除/置空/添加/移动字段（含锁检查）
+        6. 字段锁管理 — 交互式设置结构锁/内容锁
+        7. q 退出
+
+    Args:
+        无（通过命令行直接运行：python3 MgrScript/yijing_manager.py）
+
+    Returns:
+        None: 所有操作通过控制台交互完成
+
+    示例:
+        $ cd src/data/yijing
+        $ python3 MgrScript/yijing_manager.py
+        ════════════════════════════════════════════════
+          易经数据库管理工具
+        ════════════════════════════════════════════════
+          1. 编辑单卦    2. 查看单卦
+          3. 备份数据库  4. 恢复数据库
+          5. 批量字段操作 - 删除/重命名/新增/移动
+          6. 🔒字段锁管理
+          q. 退出
+        ────────────────────────────────────────────────
+          请选择 (0返回):
+    """
     while True:
         print("\n" + "═" * 48)
         print("  易经数据库管理工具")
