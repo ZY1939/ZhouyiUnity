@@ -393,6 +393,10 @@ class QiguaPanel(QWidget):
         self._gap_cb_combo_extra = 2
         # 【可手动调整】Lock复选框到"动爻设置"文字右边的间距（px）
         self._gap_lock = 8
+        # 【可手动调整】报数面板 Lock 文字到刷新按钮的间距（px）
+        self._gap_refresh = 20
+        # 【可手动调整】刷新按钮图标尺寸比例（相对 name_h，默认 0.85 = name_h 的 85%）
+        self._gap_refresh_icon_scale = 1
         # 【可手动调整】结果文字到卦图的垂直距离（px）
         self._gap_result_top = -4
         # 【可手动调整】报数面板按钮水平留白（px），按钮宽 = 两个汉字宽 + 此值
@@ -910,10 +914,13 @@ class QiguaPanel(QWidget):
 
     def _make_lock_only_row(self, name_h: int) -> QWidget:
         """
-        创建仅有 Lock 复选框的行（不显示"动爻设置"文字）
+        创建 Lock 复选框 + 刷新按钮的行（不显示"动爻设置"文字）
 
         供报数面板使用。报数面板不像手工/金钱/蓍草面板有"动爻设置"概念，
-        但仍需 Lock 功能来控制 SpinBox 和按钮的启用/禁用。
+        但仍需 Lock 功能来控制 SpinBox 和按钮的启用/禁用，
+        以及刷新按钮来手动触发起卦计算。
+
+        布局：Lock 复选框 + gap_refresh + 刷新按钮(矢量图标) + stretch
 
         Args:
             name_h: 行固定高度(px)
@@ -933,11 +940,94 @@ class QiguaPanel(QWidget):
         lock_cb = QCheckBox("Lock")
         lock_cb.setStyleSheet(f"QCheckBox {{ spacing: 4px; color: {self._text_color}; font-size: {self._font_size - 2}px; }}")
         lock_cb.toggled.connect(self._on_lock_toggled)
-        lay.addWidget(lock_cb)
+        lay.addWidget(lock_cb, 0, Qt.AlignmentFlag.AlignVCenter)
         self._lock_cbs.append(lock_cb)
+
+        lay.addSpacing(self._gap_refresh)
+
+        # 刷新按钮 — 矢量图标（QPainter 绘制），尺寸 = name_h * _gap_refresh_icon_scale
+        icon_size = max(14, int(name_h * self._gap_refresh_icon_scale))
+        self._btn_refresh = QPushButton()
+        self._btn_refresh.setFlat(True)
+        self._btn_refresh.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._btn_refresh.setFixedSize(icon_size, icon_size)
+        self._set_refresh_icon(self._text_color, icon_size)
+        self._btn_refresh.clicked.connect(self._run_three_auto)
+        lay.addWidget(self._btn_refresh, 0, Qt.AlignmentFlag.AlignVCenter)
 
         lay.addStretch()
         return row
+
+    def _set_refresh_icon(self, color_hex: str, size: int):
+        """
+        用 QPainter 绘制矢量刷新图标并设为按钮图标
+
+        绘制圆形箭头（refresh 图标）：圆弧 + 箭头尖，无锯齿无边框，
+        纯矢量路径，颜色和尺寸随参数动态适配。
+
+        Args:
+            color_hex: CSS hex 颜色字符串（如 "#1d1d1f" 或 "#ffffff"）
+            size:      图标尺寸(px)，正方形
+
+        调用时机：
+          - _make_lock_only_row() 中首次设置
+          - refresh_font_size() 中字号变更后重设（尺寸跟随 name_h）
+          - refresh_text_color() 中颜色变更后重设
+        """
+        if not hasattr(self, "_btn_refresh") or self._btn_refresh is None:
+            return
+        btn = self._btn_refresh
+        btn.setFixedSize(size, size)
+
+        px = QPixmap(size * 2, size * 2)  # @2x 保证 retina 清晰
+        px.fill(Qt.GlobalColor.transparent)
+        qp = QPainter(px)
+        qp.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        color = QColor(color_hex)
+        c = size  # 逻辑尺寸（@1x）
+        r = c * 0.38      # 圆弧半径
+        cx, cy = c, c     # @2x 画布中心
+        pen_w = max(1.5, c * 0.14)  # 线宽随尺寸缩放
+
+        pen = QPen(color, pen_w, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
+        qp.setPen(pen)
+        qp.setBrush(Qt.BrushStyle.NoBrush)
+
+        # ── 圆弧：从 50° 画到 360°，留 50° 缺口 ──
+        from PySide6.QtCore import QRectF
+        qp.drawArc(QRectF(cx - r, cy - r, r * 2, r * 2), 50 * 16, 310 * 16)
+
+        # ── 箭头（在圆弧 50° 方向，指向右上）──
+        import math
+        arrow_deg = 50
+        arrow_rad = math.radians(arrow_deg)
+        tip_x = cx + r * math.cos(arrow_rad)
+        tip_y = cy - r * math.sin(arrow_rad)
+
+        left_dir = arrow_rad + math.radians(28)
+        right_dir = arrow_rad - math.radians(28)
+        arrow_len = c * 0.16
+
+        left_x = tip_x - arrow_len * math.cos(left_dir)
+        left_y = tip_y + arrow_len * math.sin(left_dir)
+        right_x = tip_x - arrow_len * math.cos(right_dir)
+        right_y = tip_y + arrow_len * math.sin(right_dir)
+
+        path = QPainterPath()
+        path.moveTo(tip_x, tip_y)
+        path.lineTo(left_x, left_y)
+        path.lineTo(right_x, right_y)
+        path.closeSubpath()
+        qp.setPen(Qt.PenStyle.NoPen)
+        qp.setBrush(color)
+        qp.drawPath(path)
+
+        qp.end()
+
+        from PySide6.QtGui import QIcon
+        btn.setIcon(QIcon(px))
+        btn.setIconSize(px.size() / 2)  # @2x → @1x 显示
 
     def _make_mod_display(self, mod_val: int) -> tuple[QWidget, QLabel]:
         """
@@ -1190,6 +1280,8 @@ class QiguaPanel(QWidget):
             self._btn_random.setEnabled(enabled)
         if hasattr(self, "_btn_sw"):
             self._btn_sw.setEnabled(enabled)
+        if hasattr(self, "_btn_refresh"):
+            self._btn_refresh.setEnabled(enabled)
 
         # ── 第7步：方法选择器（dot + 标签）──
         for dot in self._dots:
@@ -1723,6 +1815,10 @@ class QiguaPanel(QWidget):
                     wgt.setStyleSheet(f"QLabel {{ color: {self._text_color}; }}")
                 elif isinstance(wgt, QCheckBox):
                     wgt.setStyleSheet(lock_style)
+        # 刷新按钮图标（矢量绘制，字号变更时尺寸跟随 name_h 等比缩放）
+        if hasattr(self, "_btn_refresh") and self._btn_refresh is not None:
+            icon_size = max(14, int(name_h * self._gap_refresh_icon_scale))
+            self._set_refresh_icon(self._text_color, icon_size)
         root = self.layout()
         if root:
             root.setContentsMargins(0, 0,
@@ -1939,6 +2035,10 @@ class QiguaPanel(QWidget):
                     wgt.setStyleSheet(f"QLabel {{ color: {text_color}; }}")
                 elif isinstance(wgt, QCheckBox):
                     wgt.setStyleSheet(lock_style)
+        # 刷新按钮图标（矢量绘制，颜色变更时跟随 text_color）
+        if hasattr(self, "_btn_refresh") and self._btn_refresh is not None:
+            icon_size = max(14, int(self._drawer.name_area_h * self._gap_refresh_icon_scale))
+            self._set_refresh_icon(text_color, icon_size)
 
         for cb in self._manual_cbs:
             cb.setStyleSheet(f"""
@@ -2272,13 +2372,16 @@ class QiguaPanel(QWidget):
             was_enabled: bool — Lock 状态恢复
         """
         gua_id = item.data(Qt.ItemDataRole.UserRole)
-        # 关闭弹窗窗口（picker 的顶层 Popup 窗口）
+        # 延迟销毁弹窗：picker 是 popup 的子控件，当前正处在 picker 的
+        # itemClicked 信号处理器中，同步 close() 会销毁 picker 导致 SIGSEGV。
+        # 改用 hide() + deleteLater() 清理，避免 use-after-free。
         popup = picker.window()
         if popup:
-            popup.close()
-        # 恢复 Lock 状态
-        if not was_enabled:
-            self._title_label.setEnabled(False)
+            self._gua_picker = None
+            if not was_enabled:
+                self._title_label.setEnabled(False)
+            popup.hide()
+            popup.deleteLater()
         if gua_id is not None:
             self._on_gua_picked(gua_id)
 
