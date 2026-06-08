@@ -87,12 +87,27 @@
 import json
 import os
 import platform
+import sys
+
+# ── 项目根目录（可写）──────────────────────────────────
+# 兼容开发模式（python3 main.py）和 PyInstaller 打包模式（onedir / .app bundle）
+# 开发模式 → main.py 所在的 ZhouyiUnity/ 根目录
+# 打包模式 → dist/（.app 或 onedir 的同级目录），macOS .app bundle 内部只读
+def get_project_root():
+    if getattr(sys, 'frozen', False):
+        exe_dir = os.path.dirname(sys.executable)
+        # macOS .app bundle: dist/ZhouyiUnity.app/Contents/MacOS/ZhouyiUnity
+        if '.app/Contents/' in exe_dir:
+            return os.path.abspath(os.path.join(exe_dir, "..", "..", ".."))
+        # onedir: dist/ZhouyiUnity/ZhouyiUnity
+        else:
+            return os.path.abspath(os.path.join(exe_dir, ".."))
+    else:
+        # 开发模式: 从 src/settings/ 向上 2 级到项目根
+        return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 # ── 配置文件的存储路径 ──────────────────────────────────
-# os.path.dirname(__file__) 获取本文件所在目录
-# ".." 向上一级，".." 再向上一级（settings → src → ZhouyiUnity根目录）
-# 最终得到: ZhouyiUnity/usrCfg/UsrCfg.json
-_CFG_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "usrCfg")
+_CFG_DIR = os.path.join(get_project_root(), "usrCfg")
 _CFG_PATH = os.path.join(_CFG_DIR, "UsrCfg.json")
 
 
@@ -212,15 +227,19 @@ class ConfigManager:
 
         不直接调用此方法，它只在 __init__ 时自动执行一次。
         """
+        print(f"[配置] 配置目录: {_CFG_DIR}")
+        print(f"[配置] 配置文件: {_CFG_PATH}")
         os.makedirs(_CFG_DIR, exist_ok=True)
         if os.path.exists(_CFG_PATH):
             with open(_CFG_PATH, "r", encoding="utf-8") as f:
                 self._config = json.load(f)
+            print("[配置] ✓ 加载已有配置")
         else:
             # 首次启动 → 深拷贝默认配置（避免引用污染）
             self._config = _deepcopy_default()
             self._prefill_from_env()
             self._save()
+            print("[配置] ✓ 创建默认配置")
 
     def _prefill_from_env(self):
         """

@@ -71,7 +71,7 @@ from .panels.solar_time_panel import SolarTimePanel
 
 # ── 图标路径 ──────────────────────────────────────────
 # 使用相对路径保证工程移动后依然能找到图标
-_ICON_DIR = os.path.join(os.path.dirname(__file__), "..", "data", "icon", "setting")
+_ICON_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data", "icon", "setting"))
 
 
 def _svg_icon(name: str, size: int, icon_bg_alpha: int = 0) -> QIcon:
@@ -88,6 +88,9 @@ def _svg_icon(name: str, size: int, icon_bg_alpha: int = 0) -> QIcon:
     """
     svg_path = os.path.join(_ICON_DIR, f"{name}.svg")
     if not os.path.exists(svg_path):
+        print(f"[图标] ❌ SVG 文件不存在: {svg_path}")
+        print(f"[图标]    _ICON_DIR = {_ICON_DIR}")
+        print(f"[图标]    __file__ = {__file__}")
         return QIcon()
 
     pixmap = QPixmap(size, size)
@@ -217,7 +220,9 @@ class SettingsTab:
         # 在 .ui 文件中查找 tab_settings 容器
         container = main_window.findChild(QWidget, "tab_settings")
         if container is None:
-            print("[设置] 找不到 tab_settings 容器")
+            print("[设置] ❌ 找不到 tab_settings 容器")
+            print("[设置]    可能原因: .ui 文件未加载, 或容器 objectName 不匹配")
+            print("[设置]    检查: 主窗口是否加载了 zhouyiUnity.ui?")
             return
 
         self._build_ui(container)
@@ -364,14 +369,14 @@ class SettingsTab:
         返回:
             str: 毛玻璃背景图缓存路径，失败返回 None
         """
-        from .config_manager import config_manager
+        from .config_manager import config_manager, get_project_root
         blur_radius = config_manager.get("appearance", "sidebar_blur_radius")
         if blur_radius is None:
             blur_radius = 8.0
         if blur_radius <= 0:
             return None
 
-        bg_cache = os.path.join(os.path.dirname(__file__), "..", "..", "usrCfg", "_bg_cache.png")
+        bg_cache = os.path.join(get_project_root(), "usrCfg", "_bg_cache.png")
         if not os.path.isfile(bg_cache):
             return None
 
@@ -406,7 +411,7 @@ class SettingsTab:
         # 真高斯模糊：分离卷积（水平+垂直），ctypes 直接操作像素数组
         blurred = _gaussian_blur(cropped, blur_radius)
 
-        cache_path = os.path.join(os.path.dirname(__file__), "..", "..", "usrCfg", "_sidebar_frosted.png")
+        cache_path = os.path.join(get_project_root(), "usrCfg", "_sidebar_frosted.png")
         blurred.save(cache_path, "PNG")
         return cache_path
 
@@ -425,8 +430,10 @@ class SettingsTab:
             - 无背景图: 侧边栏 #f0f0f5 实色背景，深色文字（固定颜色）
             - 有背景图: 侧边栏全透明，文字颜色用 text_color 自适应
         """
-        sidebar = self._sidebar_list
+        sidebar = getattr(self, "_sidebar_list", None)
         if sidebar is None:
+            print("[设置] ⚠ refresh_sidebar 跳过: _sidebar_list 未初始化"
+                  " (tab_settings 容器可能未加载)")
             return
 
         # 图标填满行高，字号 × 2.8，最小 24px

@@ -58,7 +58,7 @@ import json
 from .bagua import NAME_TO_XIANTIAN, BINARY_TO_GUA
 
 # ── 默认数据目录（相对路径，随工程移动自适应）──
-_CONTENT_DIR = os.path.join(os.path.dirname(__file__), "..", "data", "yijing", "content")
+_CONTENT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data", "yijing", "content"))
 
 # 缓存：避免重复读盘
 _cache: dict[int, dict] | None = None
@@ -116,8 +116,11 @@ def load_all_gua(force_reload: bool = False, data_dir: str | None = None) -> dic
     _cached_dir = content_dir
 
     if not os.path.isdir(content_dir):
+        print(f"[卦数据] ❌ 数据目录不存在: {content_dir}")
+        print(f"[卦数据]    __file__ = {__file__}")
         return _cache
 
+    print(f"[卦数据] ✓ 数据目录: {content_dir} ({len(os.listdir(content_dir))} 文件)")
     for fname in sorted(os.listdir(content_dir)):
         if not fname.endswith(".jsonc") or fname == "lock.jsonc":
             continue

@@ -108,7 +108,10 @@ def _text_color_for_bg(bg_hex: str) -> str:
 
 
 # ── 背景图片缓存路径 ──────────────────────────────
-_BG_CACHE = os.path.join(os.path.dirname(__file__), "..", "..", "usrCfg", "_bg_cache.png")
+# 使用 config_manager 的 get_project_root() 确保打包后路径可写
+from .config_manager import get_project_root as _get_project_root
+
+_BG_CACHE = os.path.join(_get_project_root(), "usrCfg", "_bg_cache.png")
 
 
 def _scale_and_cache_image(image_path: str, opacity: int = 100,
@@ -248,8 +251,7 @@ def apply_appearance(main_window) -> None:
     bg_image = cfg.get("background_image", "")
     # 支持相对路径（相对于项目根目录）
     if bg_image and not os.path.isabs(bg_image):
-        _proj_root = os.path.join(os.path.dirname(__file__), "..", "..")
-        bg_image = os.path.join(_proj_root, bg_image)
+        bg_image = os.path.join(_get_project_root(), bg_image)
     bg_image_mode = cfg.get("background_image_mode", "fill")
     bg_image_opacity = cfg.get("background_image_opacity", 100)
     font_family = cfg.get("font_family", "PingFang SC")

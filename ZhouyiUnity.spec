@@ -3,6 +3,7 @@
 
 import sys
 import os
+import glob
 import PySide6
 
 APP_NAME = "ZhouyiUnity"
@@ -15,21 +16,32 @@ _stock = os.path.join(_site, "scripts", "deploy_lib", "pyside_icon.icns")
 if os.path.exists(_stock):
     ICON_MAC = _stock
 
-# 源码路径
-_src_data = [
-    # 静态数据
-    ("src/data/*/*", "src/data"),
-    # 用户数据目录（空目录不会被自动打包，这里用占位）
-    ("user_data/.gitkeep", "user_data"),
-]
+# ── 收集数据文件（recursive glob，保持目录结构）───────────
+# PyInstaller spec 不支持 datas 中的通配符，用 Python glob 展开
+_datas = []
+_skip_patterns = [".DS_Store", "__pycache__", ".pyc", ".7z"]
+for _pattern, _dest_base in [
+    ("src/data/**", "src/data"),   # 所有数据库、图标、位置数据等
+    ("ui/**", "ui"),               # Qt Designer .ui 文件
+]:
+    for _src in glob.glob(_pattern, recursive=True):
+        if not os.path.isfile(_src):
+            continue
+        if any(p in _src for p in _skip_patterns):
+            continue
+        # 保持源文件目录结构：dest = 文件所在目录
+        _dest = os.path.dirname(_src)
+        _datas.append((_src, _dest))
+
+print(f"[spec] 收集数据文件: {len(_datas)} 个")
+for _s, _d in _datas:
+    print(f"  {_s} → {_d}")
 
 a = Analysis(
     [os.path.join("main.py")],
     pathex=[],
     binaries=[],
-    datas=[
-        ("user_data/.gitkeep", "user_data"),
-    ],
+    datas=_datas,
     hiddenimports=[
         "PySide6.QtCore", "PySide6.QtGui", "PySide6.QtWidgets",
         "src", "src.main_window", "src.tabs", "src.windows",

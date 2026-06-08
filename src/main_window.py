@@ -18,7 +18,7 @@ from .settings.config_manager import config_manager
 from .utils.statusbar_manager import StatusBarManager
 
 
-_UI_PATH = os.path.join(os.path.dirname(__file__), "..", "ui", "zhouyiUnity.ui")
+_UI_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "ui", "zhouyiUnity.ui"))
 
 
 class MainWindow(QMainWindow):
@@ -43,17 +43,29 @@ class MainWindow(QMainWindow):
 
     def _load_ui(self):
         """加载 .ui 文件，提取布局和属性"""
+        print(f"[主窗口] .ui 路径: {_UI_PATH}")
+        if not os.path.exists(_UI_PATH):
+            _ui_dir = os.path.dirname(_UI_PATH)
+            _nearby = os.listdir(_ui_dir) if os.path.isdir(_ui_dir) else []
+            print(f"[主窗口] ❌ .ui 文件不存在! ui/ 目录内容: {_nearby}")
+            print(f"[主窗口]    当前工作目录: {os.getcwd()}")
+            print(f"[主窗口]    __file__: {__file__}")
+            return
+
         loader = QUiLoader()
         ui_file = QFile(_UI_PATH)
         if not ui_file.open(QFile.ReadOnly):
-            print(f"WARNING: 无法打开 {_UI_PATH}")
+            print(f"[主窗口] ❌ 无法打开 {_UI_PATH}")
             return
 
         widget = loader.load(ui_file)
         ui_file.close()
 
         if widget is None:
+            print("[主窗口] ❌ QUiLoader 加载 .ui 文件失败")
             return
+
+        print("[主窗口] ✓ .ui 文件加载成功")
 
         self.resize(widget.size())
         self.setWindowTitle(widget.windowTitle())

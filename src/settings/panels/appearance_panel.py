@@ -53,7 +53,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtGui import QColor, QFont
 from PySide6.QtCore import Qt
 
-from ..config_manager import config_manager
+from ..config_manager import config_manager, get_project_root
 
 PANEL_STYLE = """
 QWidget {{
@@ -706,8 +706,8 @@ class AppearancePanel(QWidget):
         """
         if not src_path:
             return src_path
-        usrCfg_dir = os.path.join(os.path.dirname(__file__), "..", "..", "..", "usrCfg")
-        _proj_root = os.path.join(os.path.dirname(__file__), "..", "..", "..")
+        usrCfg_dir = os.path.join(get_project_root(), "usrCfg")
+        _proj_root = get_project_root()
 
         # 相对路径 → 解析为绝对路径
         if not os.path.isabs(src_path):
@@ -728,6 +728,12 @@ class AppearancePanel(QWidget):
                 os.remove(old)
 
         shutil.copy2(src_path, dst)
+        # 删除旧缓存，确保新图被重新缩放渲染
+        # shutil.copy2 会保留源文件 mtime，缓存检查用 mtime 判断是否需要重新缩放，
+        # 若源文件 mtime < 缓存 mtime 则旧缓存被复用 → 新图不生效
+        bg_cache = os.path.join(get_project_root(), "usrCfg", "_bg_cache.png")
+        if os.path.isfile(bg_cache):
+            os.remove(bg_cache)
         return f"usrCfg/_bg_original{ext}"
 
     def _on_browse_image(self):

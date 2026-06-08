@@ -45,9 +45,9 @@ from PySide6.QtCore import Qt
 
 # ── 城市数据文件路径 ──────────────────────────────────
 # 使用相对路径（从本文件向上两级到 settings，再进入 src/data/location）
-_CITIES_PATH = os.path.join(
+_CITIES_PATH = os.path.abspath(os.path.join(
     os.path.dirname(__file__), "..", "..", "data", "location", "chinese_cities.py"
-)
+))
 
 
 def _load_cities():
@@ -73,6 +73,10 @@ def _load_cities():
         ('北京市', '北京市', '东城区', 116.4167, 39.9289)
     """
     import importlib.util
+    if not os.path.exists(_CITIES_PATH):
+        print(f"[城市数据] ❌ 城市数据文件不存在: {_CITIES_PATH}")
+        print(f"[城市数据]    __file__ = {__file__}")
+        return []
     spec = importlib.util.spec_from_file_location("chinese_cities", _CITIES_PATH)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
