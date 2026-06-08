@@ -327,8 +327,18 @@ def _split_items(body):
                 current_lines = []
             continue
 
-        # 检查是否以「N、」开头 → 新条目
-        if _ITEM_START_RE.match(stripped):
+        # 检查本行是否包含「N、」（中间某处） → 可能 intro 和 item 被 OCR 合并
+        item_pos = re.search(r'[一二三四五六七八九十]+、', stripped)
+        if item_pos and not stripped.startswith(item_pos.group()):
+            # 行内合并：intro文字 + N、item → 拆成两段
+            intro_part = stripped[:item_pos.start()].strip()
+            item_part = stripped[item_pos.start():]
+            if current_lines:
+                raw_items.append(''.join(current_lines))
+            if intro_part:
+                raw_items.append(intro_part)
+            current_lines = [item_part]
+        elif _ITEM_START_RE.match(stripped):
             if current_lines:
                 raw_items.append(''.join(current_lines))
             current_lines = [stripped]

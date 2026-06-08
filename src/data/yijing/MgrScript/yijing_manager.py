@@ -14,7 +14,7 @@
     python3 MgrScript/yijing_manager.py
 
 依赖：
-    MgrScript/sync_structure.py — 提供 format_by_template 模板化 JSONC 输出
+    MgrScript/sync_core.py — 提供 format_by_template 模板化 JSONC 输出
     content/01_乾.jsonc       — 作为输出格式模板
     content/*.jsonc           — 64 卦数据文件（被管理对象）
 """
@@ -32,7 +32,7 @@ DATA_DIR = os.path.join(PARENT, "content")
 TEMPLATE_FILE = os.path.join(DATA_DIR, "01_乾.jsonc")
 
 sys.path.insert(0, HERE)
-from sync_structure import format_by_template, load_jsonc as _load_jsonc_sync
+from sync_core import format_by_template, load_jsonc as _load_jsonc_sync
 sys.path.insert(0, HERE)
 from lock_utils import is_locked, is_content_locked, get_max_child_lock, sync_new_field, sync_delete_field, sync_rename_field
 
@@ -40,7 +40,7 @@ from lock_utils import is_locked, is_content_locked, get_max_child_lock, sync_ne
 def save_jsonc(path, data):
     """将卦数据写入 JSONC 文件，输出格式与模板（01_乾.jsonc）严格一致。
 
-    使用 sync_structure 中的 format_by_template 对数据进行格式化，
+    使用 sync_core 中的 format_by_template 对数据进行格式化，
     确保所有 64 卦文件的字段顺序、缩进、注释样式与模板完全对齐。
 
     Args:
