@@ -65,7 +65,7 @@ def _print_gua_table(result: dict):
     print(hdr)
     print(f"  {_c('D', '─' * 48)}")
 
-    for line in lines:
+    for line in reversed(lines):
         ls = line["liushen"] or "—"
         sy = line["shi_ying"] or ""
         sy_color = "B" if sy == "世" else ("C" if sy == "应" else "D")

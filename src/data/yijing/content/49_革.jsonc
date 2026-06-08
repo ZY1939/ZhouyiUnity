@@ -54,7 +54,11 @@
     "home": {
       "member": "少女",
       "direction": "南",
-      "description": []
+      "description": [
+        "一、 此女天生剛勇，且明事理。",
+        "二、 感情困擾多。",
+        "三、 婚姻比同時生人早二年，且比姊早婚。"
+      ]
     },
     "heluo": {
       "xiantian": [

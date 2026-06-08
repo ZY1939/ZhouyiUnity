@@ -8,7 +8,8 @@
 #          ├ import_home_fields.py      自动填充 nishi.home（上卦→成员, 下卦→方位）
 #          ├ import_nishi_diagram.py    自动填充倪师卦图解（diagram.description）
 #          ├ import_humanity.py         导入倪师人间道（历史案例/象课/卦图内容/解说）
-#          └ import_heluo.py            导入倪师河洛（先天卦/后天卦/流年卦）
+#          ├ import_heluo.py            导入倪师河洛（先天卦/后天卦/流年卦）
+#          └ import_nishi_Home.py       导入倪师阳宅（地脈道，home.description）
 # 选项4 → lock_manager.py            字段锁管理
 # 选项5 → chmod 文件夹权限管理        只读/可写切换
 # ──────────────────────────────────────────────────────
@@ -28,12 +29,13 @@ function submenu_import() {
         echo "║  2. 自动填充倪师卦图解（diagram.description）║"
         echo "║  3. 导入倪师人间道（history/象课/图解/解说） ║"
         echo "║  4. 导入倪师河洛（先天卦/后天卦/流年卦）    ║"
+        echo "║  5. 导入倪师阳宅（地脈道，home.description） ║"
         echo "║                                              ║"
         echo "║  0. 返回主菜单                               ║"
         echo "║                                              ║"
         echo "╚══════════════════════════════════════════════╝"
         echo ""
-        read -p "请选择 (1/2/3/4/0): " sub_choice
+        read -p "请选择 (1/2/3/4/5/0): " sub_choice
         case $sub_choice in
             1)
                 clear
@@ -141,6 +143,34 @@ function submenu_import() {
                 fi
                 echo ""
                 python3 import_heluo.py
+                echo ""
+                read -p "按回车返回..." dummy
+                ;;
+            5)
+                clear
+                echo "╔══════════════════════════════════════════════╗"
+                echo "║         导入倪师阳宅（地脈道）               ║"
+                echo "╠══════════════════════════════════════════════╣"
+                echo "║                                              ║"
+                echo "║  数据源：nishi_Home/倪海厦《天纪》阳宅合集.md ║"
+                echo "║  目标字段：nishi.home.description（数组）     ║"
+                echo "║                                              ║"
+                echo "║  执行操作：                                  ║"
+                echo "║  ◇ 解析 MD 中 64 卦的阳宅章节               ║"
+                echo "║  ◇ 按中文序号（一→1）定位 JSONC 文件        ║"
+                echo "║  ◇ 每个空行段落 = 数组一个元素              ║"
+                echo "║  ◇ 覆盖写入 description（替换原有内容）      ║"
+                echo "║                                              ║"
+                echo "║  绕开锁机制，直接写入                        ║"
+                echo "║                                              ║"
+                echo "╚══════════════════════════════════════════════╝"
+                echo ""
+                read -p "按回车执行，输入 q/0 返回: " confirm
+                if [ "$confirm" = "q" ] || [ "$confirm" = "Q" ] || [ "$confirm" = "0" ]; then
+                    continue
+                fi
+                echo ""
+                python3 import_nishi_Home.py
                 echo ""
                 read -p "按回车返回..." dummy
                 ;;
