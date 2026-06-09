@@ -47,7 +47,19 @@ src/yijingTab/
 |------|------|
 | ✅ | 活跃使用 |
 | 🔮 | 预留接口，未接入UI |
-| 🗑️ | 已被内联替代，可删除 |
+| 🗑️ | 已被内联替代，可安全删除 |
+
+### 遗留文件（🗑️ 可删除）
+| 文件 | 被谁替代 |
+|------|----------|
+| `lines_input.py` | `divination_panel._make_lines_panel()` |
+| `manual_input.py` | `divination_panel._make_manual_panel()` |
+| `number_input.py` | `divination_panel._make_three_panel()` |
+| `result_view.py` | `divination_panel._build_footer()` + `_show_result()` |
+
+### 预留接口接入提示
+- **case_manager**：在 `divination_panel._show_result()` 末尾调用 `save_case(result, method=self._current_method, notes="")` 即可打通。`__init__.py` 已导出 `save_case, load_cases` 等 5 个函数。
+- **hexagram_painter**：`GuaPainter.draw_gua()/clear()` 空壳，后续在 QWidget 上绘制图形化卦象。
 
 ---
 
@@ -202,7 +214,23 @@ SuanguaPanel._current_ganzhi (权威来源)
 
 ---
 
+## 调试测试
+
+> 每个 `_debug/README.md` 记录完整的设计意图 + 回归覆盖，先读 README 再跑脚本。
+
+| _debug 目录 | 测试范围 | 关键回归项 |
+|-------------|---------|-----------|
+| [`_debug/`](../../src/yijingTab/_debug/README.md) | 起卦全局：对齐验证/按钮对齐/网格行高/64卦弹窗/手工面板交互 (5个脚本) | sizeHint 9轮修复、widget.width() 陷阱、SIGSEGV、单动爻边界 |
+| [`qigua/_debug/`](../../src/yijingTab/qigua/_debug/README.md) | 起卦标签：方法标签交互/MethodLabelBar 公共组件 (2个脚本, 82项) | QPushButton RichText、border-bottom 三版迭代、AlignVCenter |
+| [`suangua/_debug/`](../../src/yijingTab/suangua/_debug/README.md) | 算卦面板：梅花badge/六爻对齐/header对齐/列间距/布局诊断 (7个脚本) | × float→int 偏移、月份计算、header 高度不一致、列固定宽度 |
+
+### 运行策略
+- 改 `divination_panel.py` → 先跑 `_debug/` + `qigua/_debug/`
+- 改 `liuyao_panel.py` → 跑 `suangua/_debug/` 全部六爻相关
+- 改 `meihua_panel.py` / common.py → 跑 `suangua/_debug/test_common.py`
+- 改 header / 方法标签 → 跑 `qigua/_debug/`
+- 只跑相关的，不使用 `python3 -m pytest` 全量（token 浪费）
+
 ## 相关文档
 - 通用踩坑：[../PITFALLS.md](../PITFALLS.md)
 - 编码规范：[../CONVENTIONS.md](../CONVENTIONS.md)
-- 调试脚本：`qigua/_debug/README.md`, `suangua/_debug/README.md`, `_debug/README.md`

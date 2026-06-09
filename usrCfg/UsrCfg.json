@@ -44,8 +44,8 @@
   },
   "general": {
     "last_tab_index": 0,
-    "qigua_method": "three",
-    "suangua_method": "meihua",
+    "qigua_method": "manual",
+    "suangua_method": "liuyao",
     "liuyao_compact": false,
     "qigua_lines_mode": "coin"
   },

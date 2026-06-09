@@ -7,14 +7,17 @@
 
 | 场景 | 读取文件 |
 |------|----------|
-| **开始写代码前** | [编码规范](docs/ai/CONVENTIONS.md) |
-| **遇到 UI 布局/对齐 bug** | [踩坑库](docs/ai/PITFALLS.md) — 先查再改 |
+| **开始写代码前** | [编码规范](docs/ai/CONVENTIONS.md) + [行为规则](docs/ai/README.md) — 先读这两个 |
+| **遇到 UI 布局/对齐 bug** | [踩坑库](docs/ai/PITFALLS.md) — **先读顶部索引（~30行），匹配症状再跳章节** |
 | **修改 yijingTab 相关** | [易经Tab架构](docs/ai/modules/yijingTab.md) |
 | **修改设置/外观** | [设置系统](docs/ai/modules/settings.md) |
 | **修改状态栏** | [状态栏](docs/ai/modules/statusbar.md) |
 | **了解历史变更** | [变更历史](docs/ai/CHANGELOG.md) |
 | **PySide6 API 不确定** | [踩坑库 §3](docs/ai/PITFALLS.md) — PySide6 API 陷阱 |
 | **对齐/间距计算** | [踩坑库 §1-2](docs/ai/PITFALLS.md) — 布局引擎 + Widget 尺寸 |
+| **修改 八宅/案例管理** | 暂无模块文档，直接读 `src/tabs/bazhai.py` / `src/tabs/case_manager.py`，遵循 [编码规范](docs/ai/CONVENTIONS.md) |
+| **修改 八字/小六壬 算法** | 直接读 `src/algorithms/` 对应文件 |
+| **新增 Tab/模块** | [新增 Tab 开发 Checklist](docs/ai/CONVENTIONS.md#新增-tab-开发-checklist) |
 | **完成代码后维护文档** | [维护说明](docs/ai/README.md) — checklist 判断哪些 doc 需要同步更新 |
 
 ## Tech Stack
@@ -81,7 +84,7 @@ ZhouyiUnity/
 
 ## Run
 ```bash
-cd ~/Desktop/ZhouyiUnity && python3 main.py
+python3 main.py
 ```
 
 ## Build

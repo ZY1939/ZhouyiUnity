@@ -39,6 +39,26 @@
 - **间距体系**：以 `drawer.line_h` 为基准 `gap = max(N, int(line_h * ratio))`
 - **多列布局**：每列用 `setFixedWidth` 包裹，`addStretch` 只放主行末尾
 
+## 新增 Tab 开发 Checklist
+
+1. 创建 Tab 类，继承 QWidget
+2. 实现 `refresh_font_size(fs)` — 字号变更联动
+3. 实现 `refresh_text_color(tc)` — 存 `self._text_color`，所有透明控件用 f-string 嵌入
+4. 在 `main_window.py` 注入 Tab（`self.mainTab.addTab(tab, "名称")`）
+5. 可调参数集中到模块的 `CONST_DEFINE_UI.py`（如有）
+6. 创建 `_debug/` 目录，编写测试脚本
+7. 按维护 Checklist 更新 `docs/ai/modules/<模块>.md` 和 `CHANGELOG.md`
+8. 更新 `CLAUDE.md` 导航表添加入口
+9. 如有新踩坑 → `docs/ai/PITFALLS.md`（含索引同步）
+10. 验证全部 `refresh_font_size(12/16/20/24)` 均正常
+
+## 测试规范
+- **强制**：所有代码变更必须在对应模块 `_debug/` 下生成测试脚本，通过后才算完成
+- **双通道日志**：正确输出用 `✅` 打印到 stdout（用户看）；错误输出写入 `.err.log`（AI 读，节省 token）
+- **覆盖项**：正向路径 + 边界条件 + 异常输入；UI 对齐 pixel 验证；信号链路；跨状态切换；多字号一致性（12/16/20/24px）
+- **适用范围**：全局 — yijingTab、八宅、案例管理、设置等所有 Tab/模块
+- **完成标准**：全部 ✅ 才能汇报，不允许「理论上应该没问题」
+
 ## 多模块对齐
 - **并排面板 header 高度**：必须来自同一数据源（如 `drawer.line_h`），不能各自独立计算
 - **所有对齐计算**：用 `minimumWidth()` 不用 `width()`
