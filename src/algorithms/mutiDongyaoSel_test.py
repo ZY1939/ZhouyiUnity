@@ -14,11 +14,12 @@ def test():
     errors = []
 
     def check(name, binary, changing, expected):
-        result = get_judgment_line(binary, changing)
+        result, reason = get_judgment_line(binary, changing)
         ok = "PASS" if result == expected else f"FAIL(got {result}, want {expected})"
         if not ok.startswith("PASS"):
             errors.append(f"  {name}: {ok}")
         print(f"  {ok}: {name}")
+        print(f"       → {reason}")
 
     # ═══ 0 动爻：六爻安静 → 卦辞 ═══
     check("0动 六爻安静→卦辞", "111111", [], 0)

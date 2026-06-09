@@ -7,8 +7,8 @@
 ═══════════════════════════════════════════════════════════════
 
 计算流程：
-    1. 用户点击「随机」→ 弹出弹窗
-    2. 10秒倒计时开始，每秒生成 (rand(0,999), rand(0,999), rand(0,999))
+    1. 用户点击「随机」→ 弹出弹窗，显示「开始」按钮
+    2. 点击「开始」→ 10秒倒计时开始，每秒生成 (rand(0,999), rand(0,999), rand(0,999))
     3. 屏幕实时显示：倒计时数字 + 已生成的随机数预览
     4. 倒计时结束 → avg(n1) = sum(所有n1) // 10, 同理得 avg(n2), avg(n3)
     5. 1.5秒后自动关闭，result_numbers = (avg1, avg2, avg3)
@@ -57,12 +57,11 @@ class CountdownDialog(QDialog):
         self.result_numbers: tuple[int, int, int] = (0, 0, 0)  # 最终输出（3个三位数）
 
         self._init_ui()
-        self._start_timer()
 
     def _init_ui(self):
         """
         构建弹窗界面：
-        顶部大字体倒计时 → 中间提示文字 → 随机数预览 → 底部取消按钮
+        顶部大字体倒计时 → 中间提示文字 → 开始按钮 → 随机数预览 → 底部取消按钮
         """
         root = QVBoxLayout(self)
         root.setContentsMargins(32, 28, 32, 28)
@@ -81,7 +80,7 @@ class CountdownDialog(QDialog):
         root.addWidget(self._label_countdown)
 
         # ── 提示文字 ──
-        self._label_hint = QLabel("心中想一件事情，静心凝神…\n倒计时结束后自动得卦")
+        self._label_hint = QLabel("心中想一件事情，静心凝神…\n点击「开始」后启动倒计时")
         self._label_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._label_hint.setWordWrap(True)
         self._label_hint.setStyleSheet("""
@@ -91,6 +90,26 @@ class CountdownDialog(QDialog):
             }
         """)
         root.addWidget(self._label_hint)
+
+        # ── 开始按钮（居中，蓝色醒目）──
+        start_row = QHBoxLayout()
+        start_row.addStretch()
+        self._btn_start = QPushButton("开始")
+        self._btn_start.setFixedSize(120, 44)
+        self._btn_start.setStyleSheet("""
+            QPushButton {
+                border: none; border-radius: 10px;
+                background: #007aff;
+                font-size: 18px; font-weight: bold;
+                color: #ffffff;
+            }
+            QPushButton:hover { background: #0062cc; }
+            QPushButton:pressed { background: #0055aa; }
+        """)
+        self._btn_start.clicked.connect(self._on_start)
+        start_row.addWidget(self._btn_start)
+        start_row.addStretch()
+        root.addLayout(start_row)
 
         # ── 每秒生成的随机数预览（小字，等宽）──
         self._label_samples = QLabel("")
@@ -128,6 +147,14 @@ class CountdownDialog(QDialog):
         btn_row.addWidget(self._btn_cancel)
 
         root.addLayout(btn_row)
+
+    def _on_start(self):
+        """
+        点击「开始」按钮 → 隐藏按钮 → 更新提示 → 启动倒计时
+        """
+        self._btn_start.hide()
+        self._label_hint.setText("心中想一件事情，静心凝神…\n倒计时结束后自动得卦")
+        self._start_timer()
 
     def _start_timer(self):
         """

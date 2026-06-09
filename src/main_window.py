@@ -26,14 +26,74 @@ class MainWindow(QMainWindow):
         super().__init__()
         self._load_ui()
         self._wire_tabs()
+        self._restore_window_size()
+
+    def _restore_window_size(self):
+        """从 UsrCfg 恢复窗口大小（首次运行则保存当前默认尺寸）"""
+        wcfg = config_manager.get("window") or {}
+        saved_w = wcfg.get("window_width", 0)
+        saved_h = wcfg.get("window_height", 0)
+
+        if saved_w > 0 and saved_h > 0:
+            self.resize(saved_w, saved_h)
+            print(f"[主窗口] ✓ 恢复窗口大小: {saved_w}×{saved_h}")
+        else:
+            # 首次运行：把当前尺寸写入配置
+            config_manager.set("window", "window_width", value=self.width())
+            config_manager.set("window", "window_height", value=self.height())
+            print(f"[主窗口] ✓ 首次运行，保存默认窗口大小: {self.width()}×{self.height()}")
+
+        # 应用 no_resize 设置
+        if wcfg.get("no_resize", False):
+            self._apply_fixed_size()
+
+    def _save_window_size(self):
+        """保存当前窗口大小到 UsrCfg（仅在非 fixed 模式下）"""
+        wcfg = config_manager.get("window") or {}
+        if not wcfg.get("no_resize", False):
+            config_manager.set("window", "window_width", value=self.width())
+            config_manager.set("window", "window_height", value=self.height())
+
+    def _apply_fixed_size(self):
+        """根据配置锁定或解锁窗口大小"""
+        wcfg = config_manager.get("window") or {}
+        if wcfg.get("no_resize", False):
+            w = wcfg.get("window_width", self.width())
+            h = wcfg.get("window_height", self.height())
+            self.setFixedSize(w, h)
+        else:
+            self.setMinimumSize(0, 0)
+            self.setMaximumSize(16777215, 16777215)
 
     def resizeEvent(self, event):
-        """窗口大小改变时，防抖重新渲染背景图片缓存"""
+        """窗口大小改变时：锁定宽高比 + 保存尺寸 + 防抖背景渲染"""
+        # ── 锁定宽高比 ──
+        window_cfg = config_manager.get("window") or {}
+        if window_cfg.get("lock_aspect_ratio", False) and not getattr(self, "_locking_ratio", False):
+            w = event.size().width()
+            h = event.size().height()
+            old = event.oldSize()
+            if old.width() > 0 and old.height() > 0:
+                ratio = old.width() / old.height()
+                if abs(w - old.width()) >= abs(h - old.height()):
+                    h = int(w / ratio)
+                else:
+                    w = int(h * ratio)
+                self._locking_ratio = True
+                self.resize(w, h)
+                self._locking_ratio = False
+                super().resizeEvent(event)
+                return
+
         super().resizeEvent(event)
         if getattr(self, "_applying_appearance", False):
             return
+
+        # ── 保存窗口大小（300ms 防抖）──
+        if hasattr(self, "_size_save_timer"):
+            self._size_save_timer.start()
+
         if hasattr(self, "_resize_timer"):
-            # 首次 resize（窗口刚显示）→ 立即渲染，后续 resize → 300ms 防抖
             if getattr(self, "_initial_appearance_applied", False):
                 self._resize_timer.start()
             else:
@@ -90,6 +150,12 @@ class MainWindow(QMainWindow):
         self._resize_timer.setSingleShot(True)
         self._resize_timer.setInterval(300)
         self._resize_timer.timeout.connect(lambda: apply_appearance(self))
+
+        # 窗口大小改变时保存到配置（500ms 防抖，比背景渲染更慢）
+        self._size_save_timer = QTimer(self)
+        self._size_save_timer.setSingleShot(True)
+        self._size_save_timer.setInterval(500)
+        self._size_save_timer.timeout.connect(self._save_window_size)
 
         # 状态栏：实时时钟 + 农历 + 真太阳时 + 四柱
         self._statusbar_mgr = StatusBarManager(self.statusBar())

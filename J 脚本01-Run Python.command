@@ -14,8 +14,15 @@ auto_exit() {
     exit 0
 }
 
-# 杀掉已有的 main.py 进程，避免重复开窗
-pkill -f "python3 main.py" 2>/dev/null
+# 关闭本项目所有的 Python 进程（通过 cwd 精确匹配，避免杀错）
+PROJ="$(cd "$(dirname "$0")" && pwd)"
+for pid in $(pgrep '^python' 2>/dev/null); do
+    CWD=$(lsof -p "$pid" -a -d cwd -Fn 2>/dev/null | tail -1 | sed 's/^n//')
+    if [ -n "$CWD" ] && ( [ "$CWD" = "$PROJ" ] || [[ "$CWD" == "$PROJ"/* ]] ); then
+        kill "$pid" 2>/dev/null
+    fi
+done
+sleep 0.3
 
 # 前台运行，Terminal 窗口作为调试输出
 python3 main.py

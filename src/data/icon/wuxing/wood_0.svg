@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">
+  <!-- 阴木：藤蔓 — 弯曲蔓藤 + 小叶，浅绿 -->
+  <path d="M4 22 Q8 9 12 6 Q15 4 18 3" stroke="#66BB6A" stroke-width="1.8" stroke-linecap="round" fill="none"/>
+  <path d="M8 14 Q4 11 5 8" stroke="#81C784" stroke-width="1.8" stroke-linecap="round" fill="none"/>
+  <circle cx="5" cy="7.5" r="2" fill="#A5D6A7" stroke="none"/>
+  <path d="M13 7 Q16 4 17 2" stroke="#81C784" stroke-width="1.8" stroke-linecap="round" fill="none"/>
+  <circle cx="17.5" cy="2" r="1.8" fill="#A5D6A7" stroke="none"/>
+  <path d="M10 10.5 Q8 8 6 7.5" stroke="#A5D6A7" stroke-width="1.5" stroke-linecap="round" fill="none"/>
+  <circle cx="5.5" cy="7" r="1.3" fill="#C8E6C9" stroke="none"/>
+</svg>

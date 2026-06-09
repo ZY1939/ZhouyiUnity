@@ -173,9 +173,6 @@ DEFAULT_CONFIG = {
         # 文字颜色：auto=自动从背景色计算, manual=手动指定
         "text_color_mode": "auto",
         "text_color": "#1d1d1f",
-        # 可读性增强遮罩（有背景图时建议启用）
-        "overlay_enabled": False,
-        "overlay_strength": "medium",  # light / medium / strong
         # 侧边栏毛玻璃模糊半径（0=关闭毛玻璃，退化为半透明色）
         "sidebar_blur_radius": 8.0,
     },
@@ -188,6 +185,14 @@ DEFAULT_CONFIG = {
         "latitude": 30.0,
         "use_in_bazi": True,
         "show_in_statusbar": True,
+    },
+    "window": {
+        "lock_aspect_ratio": True,
+        "auto_resize_with_font": False,
+        "auto_scale_factor": 1.0,
+        "no_resize": False,
+        "window_width": 0,
+        "window_height": 0,
     },
     "general": {
         "last_tab_index": 4,  # 默认启动显示"设置"标签页

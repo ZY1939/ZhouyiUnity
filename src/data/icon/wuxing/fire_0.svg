@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">
+  <!-- 阴火：红色蜡烛 — 烛身 + 火焰 + 光晕 -->
+  <!-- 光晕 -->
+  <circle cx="12" cy="6" r="5" fill="#FFCDD2" stroke="none" opacity="0.4"/>
+  <!-- 火焰外层 -->
+  <path d="M12 1 Q14.5 4 14 7 Q13.5 9 12 11 Q10.5 9 10 7 Q9.5 4 12 1Z" fill="#FF5722" stroke="none"/>
+  <!-- 火焰内层 -->
+  <path d="M12 2.5 Q13.5 5 13.2 7 Q12.8 8.5 12 10 Q11.2 8.5 10.8 7 Q10.5 5 12 2.5Z" fill="#FFEB3B" stroke="none"/>
+  <!-- 烛身 -->
+  <rect x="9" y="11" width="6" height="9" rx="1" fill="#F44336" stroke="none"/>
+  <!-- 烛身高光 -->
+  <rect x="10" y="11" width="2" height="9" rx="0.5" fill="#EF9A9A" stroke="none" opacity="0.5"/>
+  <!-- 烛芯 -->
+  <rect x="11.5" y="9.5" width="1" height="2" rx="0.3" fill="#212121" stroke="none"/>
+</svg>

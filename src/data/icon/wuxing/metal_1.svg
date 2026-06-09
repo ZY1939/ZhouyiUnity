@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">
+  <!-- 阳金：铁块 — 3D立体金属锭 -->
+  <!-- 顶面 -->
+  <polygon points="12,2 20,6 12,10 4,6" fill="#B0BEC5" stroke="#78909C" stroke-width="1" stroke-linejoin="round"/>
+  <!-- 正面 -->
+  <polygon points="4,6 12,10 12,19 4,15" fill="#90A4AE" stroke="#78909C" stroke-width="1" stroke-linejoin="round"/>
+  <!-- 右侧面 -->
+  <polygon points="12,10 20,6 20,15 12,19" fill="#78909C" stroke="#607D8B" stroke-width="1" stroke-linejoin="round"/>
+  <!-- 高光线 -->
+  <line x1="8" y1="8" x2="8" y2="17" stroke="#CFD8DC" stroke-width="0.8" stroke-linecap="round" opacity="0.6"/>
+</svg>

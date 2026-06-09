@@ -241,6 +241,13 @@ class HexagramDrawer(QWidget):
         self._clickable = False                  # 默认不可点击，仅显示
         self._gua_name = ""                      # 卦名初始为空，set_lines() 后自动更新
         self._text_color = "#1d1d1f"             # 卦名文字颜色默认值（浅底黑字）
+        self._name_fs = 0                         # 卦名字号偏移（相对系统字号的差值）
+        self._disabled_mode = False               # 灰色禁用模式（0动爻时变卦用）
+        self._disabled_color = QColor("#999999")  # 禁用时的爻线颜色
+        self._wuxing_mode = False                 # 五行颜色模式（互卦用，上下卦分色）
+        self._wuxing_upper_color = QColor("#e74c3c")  # 上卦五行颜色（爻线4-6）
+        self._wuxing_lower_color = QColor("#e74c3c")  # 下卦五行颜色（爻线1-3）
+        self._custom_title = ...                  # 自定义标题：...=默认gua_name, None=不画, str=替换
 
         # ── 绘制参数（由 QFontMetrics 精确计算） ──
         # 获取当前应用字体作为基准，后续 set_font_size() 只改字号不改 family
@@ -478,6 +485,72 @@ class HexagramDrawer(QWidget):
         self._text_color = text_color
         self.update()
 
+    def set_name_fs(self, offset: int):
+        """
+        设置卦名字号偏移（相对系统字号的差值）并触发重绘
+
+        卦名最终字号 = 系统字号 + offset。
+        offset 为正 → 卦名比正文大；offset 为负 → 卦名比正文小。
+
+        Args:
+            offset: int — 字号偏移量(pt)，如 4 表示卦名 = 系统字号 + 4
+
+        使用示例:
+            drawer.set_name_fs(4)   # 卦名比正文大 4pt
+            drawer.set_name_fs(-2)  # 卦名比正文小 2pt
+        """
+        self._name_fs = offset
+        self.update()
+
+    def set_disabled_look(self, enabled: bool, color_hex: str = "#999999"):
+        """
+        设置灰色禁用模式（0动爻时变卦用）
+
+        启用后所有爻线使用指定灰色绘制，营造"无变化/禁用"的视觉效果。
+        set_lines() 不会自动关闭此模式，需显式调用 set_disabled_look(False) 恢复。
+
+        Args:
+            enabled: True=灰色禁用模式, False=正常颜色
+            color_hex: CSS颜色字符串，如 "#b0b0b0"（浅底）或 "#777777"（深底）
+        """
+        self._disabled_mode = enabled
+        self._disabled_color = QColor(color_hex)
+        self.update()
+
+    def set_wuxing_mode(self, enabled: bool, upper_color_hex: str = "#e74c3c",
+                        lower_color_hex: str = ""):
+        """
+        设置五行颜色模式（互卦用，上下卦分色）
+
+        互卦在梅花易数中拆成上下两个八卦来看：
+          - 上卦（爻线 4-6/上三爻）→ upper_color_hex
+          - 下卦（爻线 1-3/下三爻）→ lower_color_hex
+
+        启用后不再使用默认红蓝配色，改为上下卦各自五行颜色。
+        与互卦左侧八卦名标注的五行颜色保持一致。
+
+        Args:
+            enabled: True=五行颜色模式, False=正常红蓝配色
+            upper_color_hex: 上卦五行颜色（爻线4-6），如 "#27ae60"（阳木绿）
+            lower_color_hex: 下卦五行颜色（爻线1-3），空字符串=与上卦同色
+        """
+        self._wuxing_mode = enabled
+        self._wuxing_upper_color = QColor(upper_color_hex)
+        self._wuxing_lower_color = QColor(lower_color_hex or upper_color_hex)
+        self.update()
+
+    def set_custom_title(self, title):
+        """
+        设置自定义标题，覆盖默认的 卦符+卦名
+
+        Args:
+            title: ... = 使用默认 _gua_name（symbol + full_name）
+                   None = 不绘制标题
+                   str  = 用该字符串替换标题，字体样式不变
+        """
+        self._custom_title = title
+        self.update()
+
     def set_lines(self, yang_lines: list[bool]):
         """
         设置 6 爻阴阳状态（从下而上 [初..上]）
@@ -567,6 +640,37 @@ class HexagramDrawer(QWidget):
         """
         return self._gua_name
 
+    def get_line_positions(self) -> list[dict]:
+        """
+        返回每爻在 widget 本地坐标系中的位置信息，用于对齐调试
+
+        返回值顺序：初爻(index=0) → ... → 上爻(index=5)
+
+        Returns:
+            list[dict]: 每爻位置信息，包含:
+                - line_num: int        爻序号 (1=初爻..6=上爻)
+                - center_y: int        爻线中心 Y (widget 本地坐标)
+                - top_y: int           爻线所在行顶部 Y
+                - line_h: int          行高
+                - bar_rect: (x,y,w,h)  爻条矩形 (widget 本地坐标)
+        """
+        positions = []
+        bar_w = self._bar_w
+        bar_h = self._bar_h
+        bar_x = (self.width() - bar_w) // 2
+        for i in range(6):
+            row_top = self._offset_y + self._name_area_h + (5 - i) * self._line_h
+            center_y = row_top + self._line_h // 2
+            bar_y = center_y - bar_h // 2
+            positions.append({
+                "line_num": i + 1,
+                "center_y": center_y,
+                "top_y": row_top,
+                "line_h": self._line_h,
+                "bar_rect": (bar_x, bar_y, bar_w, bar_h),
+            })
+        return positions
+
     # ── 绘制 ──
 
     def paintEvent(self, event):
@@ -611,16 +715,22 @@ class HexagramDrawer(QWidget):
         name_h = self._name_area_h       # 卦名区域高度
 
         # ── 1. 卦名（顶部居中，粗体，字号跟随全局字体） ──
-        if self._gua_name:
+        # _custom_title: ... = 默认 _gua_name, None = 不画, str = 替换标题
+        if self._custom_title is ...:
+            title_text = self._gua_name
+        else:
+            title_text = self._custom_title
+
+        if title_text:
             font = _app_font()
-            font.setPointSize(self._font_size)
+            font.setPointSize(self._font_size + self._name_fs)
             font.setBold(True)
             p.setFont(font)
             p.setPen(QColor(self._text_color))
             # drawText 在 Y=[offset, offset+name_h] 区域内水平+垂直居中绘制卦名
             p.drawText(0, offset, w, name_h,
                        Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
-                       self._gua_name)
+                       title_text)
 
         # ── 2. 爻线：bar 中心与右侧面板行中心对齐 ──
         # i=0 → 初爻（最下面），i=5 → 上爻（最上面）
@@ -631,7 +741,13 @@ class HexagramDrawer(QWidget):
             center_y = offset + name_h + (5 - i) * line_h + line_h // 2
             bar_top = int(center_y - bar_h // 2)  # bar 顶部 = 中心 - 半高
             is_yang = self._yang_lines[i]
-            color = _YANG_COLOR if is_yang else _YIN_COLOR
+            if self._wuxing_mode:
+                # 五行模式：上下卦分色（i=0-2下卦, i=3-5上卦）
+                color = self._wuxing_upper_color if i >= 3 else self._wuxing_lower_color
+            elif self._disabled_mode:
+                color = self._disabled_color  # 禁用模式：灰色
+            else:
+                color = _YANG_COLOR if is_yang else _YIN_COLOR  # 默认：红/蓝
 
             p.setPen(Qt.PenStyle.NoPen)  # 无边框，纯色填充
             p.setBrush(color)

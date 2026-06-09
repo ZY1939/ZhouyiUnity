@@ -23,16 +23,22 @@ ZhouyiUnity/
 │   ├── qigua/              起卦工具包（手工指定/三位数/金钱卦/蓍草卦）
 │   │   ├── __init__.py        导出 QiguaPanel
 │   │   ├── bagua.py           先天八卦常量 + GuaResult dataclass
+│   │   ├── dot_button.py      圆点选择按钮 DotButton（共享组件）
 │   │   ├── hexagram_loader.py  加载 content/*.jsonc，搜索卦
 │   │   ├── hexagram_calc.py     核心计算（三位数→卦、六爻→卦）
 │   │   ├── hexagram_painter.py  画卦预留接口（空壳）
+│   │   ├── hexagram_drawer.py   卦图绘制 + set_disabled_look 灰色禁用模式
 │   │   ├── manual_input.py      手工指定 Widget
 │   │   ├── number_input.py      三位数 Widget（含时间随机/秒表）
 │   │   ├── countdown_timer.py   10秒倒计时弹窗
 │   │   ├── stopwatch_timer.py   秒表弹窗
 │   │   ├── lines_input.py       金钱卦/蓍草卦 6爻输入 Widget
 │   │   ├── result_view.py       结果显示 Widget
-│   │   └── divination_panel.py  主面板（方法选择+输入区+结果区）
+│   │   ├── divination_panel.py  主面板（方法选择+输入区+结果区+算卦面板集成）
+│   │   └── suangua/            算卦面板（梅花易数/六爻）
+│   │       ├── __init__.py        导出 SuanguaPanel
+│   │       ├── suangua_panel.py   主面板（算卦标题+梅花/六爻dot+QStackedWidget）
+│   │       └── meihua_panel.py    梅花面板（本/互/变三卦+体用/o/x标注+爻辞解读）
 │   ├── settings/           设置系统（macOS风格左侧240px侧边栏 + 右侧面板）
 │   │   ├── __init__.py           导出 SettingsTab
 │   │   ├── settings_tab.py       主设置页：CATEGORIES注册、侧边栏、QStackedWidget切换
@@ -105,6 +111,22 @@ bash build/build.sh clean    # Clean
 ```
 
 ## Change Timeline
+
+### 2026-06-08（算卦面板）
+- **SuanguaPanel**: 新增 `src/qigua/suangua/` 包，梅花易数断卦面板，与起卦面板右侧并排
+- **布局结构**: QiguaPanel 根布局改为 panels_row(QHBoxLayout) 包裹 border_frame + suangua_frame，通过 `_gap_suangua`(默认12px) 控制间距
+- **SuanguaPanel header**: "算卦"标题按钮（与"起卦"同款：font_size+4/bold/#007aff）+ ●梅花 ●六爻 dot 选择器，top_spacer 公式一致确保对齐
+- **梅花模式 (MeihuaPanel)**: 本卦/互卦/变卦 3个 HexagramDrawer 横向排列，嵌套列布局(标题+卦图居中对齐)
+  - 左标注 _LineMarker：本卦→体用(红/蓝对齐五爻/二爻)，互卦→上下卦八卦名(如☰乾)
+  - 右标注：变卦动爻 o(老阳)/x(老阴)
+  - 底部方块：1动爻→蓝色(rgb=59,86,189)爻辞+小象；0动爻→橙色(rgb=211,107,0)卦辞+彖曰
+- **HexagramDrawer**: 新增 `set_disabled_look(enabled, color)` — 0动爻时变卦爻线变灰（#b0b0b0浅底/#777777深底），营造禁用视觉
+- **互卦计算**: _calc_hugua() — 下卦取lines[1:4]（二三四爻），上卦取lines[2:5]（三四五爻）
+- **体用规则**: 动爻在上卦(4-6)→体=下卦/用=上卦；动爻在下卦(1-3)→体=上卦/用=下卦
+- **多动爻**: >1 动爻时梅花 dot 禁用（灰色），强制切换到六爻（预留）
+- **DotButton 提取**: `_DotButton` → `src/qigua/dot_button.py`，解决 divination_panel ↔ suangua 循环导入
+- **方法持久化**: suangua_method 保存到 `usrCfg["general"]["suangua_method"]`
+- **刷新链**: QiguaPanel.refresh_font_size/text_color → SuanguaPanel → MeihuaPanel → drawers/markers 全链路
 
 ### 2026-06-08 (Build修复)
 - **PyInstaller 数据文件收集**：spec 改用 `glob.glob("src/data/**", recursive=True)` 展开所有深度文件（图标、数据库、城市数据等）；过滤 `.DS_Store`/`__pycache__`/`.pyc`/`.7z`

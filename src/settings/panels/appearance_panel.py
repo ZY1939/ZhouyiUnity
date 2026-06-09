@@ -210,6 +210,7 @@ class AppearancePanel(QWidget):
         # ── 背景设置 ──
         bg_group = QGroupBox("背景")
         bg_layout = QFormLayout(bg_group)
+        bg_layout.setLabelAlignment(Qt.AlignmentFlag.AlignLeft)
         bg_layout.setSpacing(12)
 
         # 背景颜色行：色块预览 + 十六进制值 + 选择按钮
@@ -256,7 +257,7 @@ class AppearancePanel(QWidget):
         self._bg_opacity_spin.setSingleStep(10)
         self._bg_opacity_spin.setValue(100)
         self._bg_opacity_spin.setSuffix(" %")
-        self._bg_opacity_spin.setFixedWidth(80)
+        self._bg_opacity_spin.setFixedWidth(88)
         mode_opacity_row.addWidget(self._bg_opacity_spin)
         mode_opacity_row.addStretch()
         bg_layout.addRow("图片模式：", mode_opacity_row)
@@ -266,6 +267,7 @@ class AppearancePanel(QWidget):
         # ── 字体设置 ──
         font_group = QGroupBox("字体")
         font_layout = QFormLayout(font_group)
+        font_layout.setLabelAlignment(Qt.AlignmentFlag.AlignLeft)
         font_layout.setSpacing(12)
 
         # 字体 + 字号 + 行距（同一行，自适应宽度）
@@ -281,7 +283,7 @@ class AppearancePanel(QWidget):
         font_row.addLayout(font_box)
         # 字号
         self._font_size_spin = QSpinBox()
-        self._font_size_spin.setRange(10, 48)
+        self._font_size_spin.setRange(12, 24)
         self._font_size_spin.setValue(16)
         self._font_size_spin.setSuffix(" px")
         size_box = QHBoxLayout()
@@ -310,25 +312,13 @@ class AppearancePanel(QWidget):
         self._auto_text_cb = QCheckBox("自动适配")
         self._auto_text_cb.setChecked(True)
         text_color_row.addWidget(self._auto_text_cb)
+        text_color_row.addSpacing(40)
         self._text_color_combo = QComboBox()
         self._text_color_combo.addItems(["深色文字", "浅色文字"])
         self._text_color_combo.hide()
         text_color_row.addWidget(self._text_color_combo)
         text_color_row.addStretch()
         font_layout.addRow("文字颜色：", text_color_row)
-
-        # 可读性增强：遮盖层降低背景图对比度，让文字更清晰
-        overlay_row = QHBoxLayout()
-        overlay_row.setSpacing(8)
-        self._overlay_cb = QCheckBox("启用")
-        self._overlay_cb.setToolTip("在背景图上叠加半透明遮罩，增强文字可读性")
-        overlay_row.addWidget(self._overlay_cb)
-        self._overlay_combo = QComboBox()
-        self._overlay_combo.addItems(["轻度", "中度", "重度"])
-        self._overlay_combo.hide()
-        overlay_row.addWidget(self._overlay_combo)
-        overlay_row.addStretch()
-        font_layout.addRow("可读性增强：", overlay_row)
         root.addWidget(font_group)
 
         # ── 预览区域 ──
@@ -428,16 +418,8 @@ class AppearancePanel(QWidget):
         self._text_color_combo.setCurrentIndex(0 if manual_color == "#1d1d1f" else 1)
         self._text_color_combo.setVisible(text_color_mode == "manual")
 
-        # 可读性增强遮罩
-        self._overlay_cb.setChecked(cfg.get("overlay_enabled", False))
-        strength = cfg.get("overlay_strength", "medium")
-        strength_map = {"light": 0, "medium": 1, "strong": 2}
-        self._overlay_combo.setCurrentIndex(strength_map.get(strength, 1))
-        self._overlay_combo.setVisible(cfg.get("overlay_enabled", False))
-
         # 自动补全缺失字段（兼容旧配置）
-        for key, val in [("text_color_mode", "auto"), ("text_color", "#1d1d1f"),
-                         ("overlay_enabled", False), ("overlay_strength", "medium")]:
+        for key, val in [("text_color_mode", "auto"), ("text_color", "#1d1d1f")]:
             if key not in cfg:
                 config_manager.set("appearance", key, value=val)
 
@@ -473,9 +455,6 @@ class AppearancePanel(QWidget):
         # 文字颜色
         self._auto_text_cb.toggled.connect(self._on_text_color_mode_changed)
         self._text_color_combo.currentIndexChanged.connect(self._save_text_color_config)
-        # 可读性增强
-        self._overlay_cb.toggled.connect(self._on_overlay_toggled)
-        self._overlay_combo.currentIndexChanged.connect(self._save_overlay_config)
 
     def _notify_changed(self):
         """
@@ -527,18 +506,13 @@ class AppearancePanel(QWidget):
         self._notify_changed()
 
     def _update_controls_enabled(self):
-        """背景图片有/无 → 控制文字颜色和遮罩选项的可用状态"""
+        """背景图片有/无 → 控制文字颜色可用状态"""
         has_bg = bool(self._bg_image_input.text().strip())
         # 文字颜色：无图片时强制自动，有图片时可手动
         self._auto_text_cb.setEnabled(has_bg)
         if not has_bg:
             self._auto_text_cb.setChecked(True)
             self._text_color_combo.setVisible(False)
-        # 可读性增强：仅在有图片时可用
-        self._overlay_cb.setEnabled(has_bg)
-        if not has_bg:
-            self._overlay_cb.setChecked(False)
-            self._overlay_combo.setVisible(False)
 
     def _on_text_color_mode_changed(self, checked):
         """自动适配 checkbox 切换"""
@@ -554,23 +528,6 @@ class AppearancePanel(QWidget):
         idx = self._text_color_combo.currentIndex()
         color = "#1d1d1f" if idx == 0 else "#ffffff"
         config_manager.set("appearance", "text_color", value=color)
-        self._notify_changed()
-
-    def _on_overlay_toggled(self, checked):
-        """可读性增强 checkbox 切换"""
-        config_manager.set("appearance", "overlay_enabled", value=checked)
-        self._overlay_combo.setVisible(checked)
-        if checked:
-            self._save_overlay_config()
-        else:
-            self._notify_changed()
-
-    def _save_overlay_config(self):
-        """保存遮罩强度选择"""
-        idx = self._overlay_combo.currentIndex()
-        strength_map = {0: "light", 1: "medium", 2: "strong"}
-        config_manager.set("appearance", "overlay_strength",
-                           value=strength_map.get(idx, "medium"))
         self._notify_changed()
 
     def _on_font_changed(self, font):

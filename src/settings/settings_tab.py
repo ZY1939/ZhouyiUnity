@@ -68,6 +68,7 @@ from .appearance_manager import apply_appearance
 from .panels.ai_panel import AIPanel
 from .panels.appearance_panel import AppearancePanel
 from .panels.solar_time_panel import SolarTimePanel
+from .panels.window_panel import WindowPanel
 
 # ── 图标路径 ──────────────────────────────────────────
 # 使用相对路径保证工程移动后依然能找到图标
@@ -169,6 +170,12 @@ CATEGORIES = [
         "title": "真太阳时和定位",
         "icon_name": "solartime",
         "panel_class": SolarTimePanel,
+    },
+    {
+        "id": "window",
+        "title": "窗口选项",
+        "icon_name": "window",
+        "panel_class": WindowPanel,
     },
 ]
 

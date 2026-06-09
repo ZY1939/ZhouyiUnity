@@ -22,14 +22,14 @@
     "background_color": "#373738",
     "background_image": "usrCfg/_bg_original.png",
     "font_family": "PingFang SC",
-    "font_size": 16,
+    "font_size": 17,
     "line_spacing": 1.5,
     "background_image_mode": "fit",
-    "background_image_opacity": 100,
+    "background_image_opacity": 90,
     "text_color_mode": "auto",
     "text_color": "#ffffff",
     "overlay_enabled": false,
-    "overlay_strength": "medium",
+    "overlay_strength": "light",
     "sidebar_blur_radius": 8
   },
   "solar_time": {
@@ -44,6 +44,15 @@
   },
   "general": {
     "last_tab_index": 0,
-    "qigua_method": "manual"
+    "qigua_method": "manual",
+    "suangua_method": "meihua"
+  },
+  "window": {
+    "lock_aspect_ratio": true,
+    "auto_resize_with_font": false,
+    "auto_scale_factor": 1.0,
+    "no_resize": false,
+    "window_width": 1024,
+    "window_height": 696
   }
 }

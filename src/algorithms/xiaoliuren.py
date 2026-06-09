@@ -232,12 +232,13 @@ def calculate(lunar_month: int, lunar_day: int, shichen_index: int) -> dict:
     }
 
 
-def calculate_now() -> dict:
+def calculate_now(use_solar_time: bool = False, longitude: float = 120.0) -> dict:
     """
     根据当前时间自动计算小六壬（阳历自动转农历，自动确定时辰）
 
     参数:
-        （无参数，自动获取当前系统时间）
+        use_solar_time (bool): 是否用真太阳时校正时辰（默认False，用北京时间）
+        longitude (float): 当地经度，用于真太阳时校正（默认120°E）
 
     返回:
         dict: 与 calculate() 返回值结构相同，额外包含:
@@ -247,13 +248,18 @@ def calculate_now() -> dict:
 
     用法:
         >>> from src.algorithms.xiaoliuren import calculate_now
-        >>> result = calculate_now()
+        >>> result = calculate_now(use_solar_time=True, longitude=116.4)
         >>> print(f"{result['position']}({'吉' if result['fortune'] else '凶'})")
         小吉(吉)
     """
+    from .bazi import true_solar_time
+
     now = datetime.now()
     lunar = LunarDate.fromSolarDate(now.year, now.month, now.day)
-    shichen_idx = _current_shichen_index(now)
+
+    # 用北京时间还是真太阳时来确定时辰
+    ref_time = true_solar_time(now, longitude) if use_solar_time else now
+    shichen_idx = _current_shichen_index(ref_time)
 
     result = calculate(lunar.month, lunar.day, shichen_idx)
     result["lunar_month"] = lunar.month

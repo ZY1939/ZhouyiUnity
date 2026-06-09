@@ -115,8 +115,7 @@ _BG_CACHE = os.path.join(_get_project_root(), "usrCfg", "_bg_cache.png")
 
 
 def _scale_and_cache_image(image_path: str, opacity: int = 100,
-                           mode: str = "fill", canvas_w: int = 0, canvas_h: int = 0,
-                           overlay_alpha: int = 0, overlay_dark: bool = True) -> str:
+                           mode: str = "fill", canvas_w: int = 0, canvas_h: int = 0) -> str:
     """
     预渲染背景图片到画布尺寸并缓存，返回缓存路径
 
@@ -126,8 +125,6 @@ def _scale_and_cache_image(image_path: str, opacity: int = 100,
         mode (str):         拉伸模式 "fill"/"fit"/"center"/"tile"
         canvas_w (int):     画布宽度（像素），0=使用屏幕宽度
         canvas_h (int):     画布高度（像素），0=使用屏幕高度
-        overlay_alpha (int):可读性遮罩透明度 0-255，0=不叠加
-        overlay_dark (bool):True=暗化遮罩(白字用), False=亮化遮罩(黑字用)
 
     返回:
         str: 缓存图片路径
@@ -136,7 +133,6 @@ def _scale_and_cache_image(image_path: str, opacity: int = 100,
         1. CSS background-image 加载原始分辨率，Retina 截图 10000+ 像素卡死
         2. Qt QSS 不支持 background-size，拉伸/适应/居中/平铺必须在 QPainter 层面实现
         3. 渲染到与 Widget 相同的尺寸，确保 1:1 像素映射
-        4. 可读性遮罩在缓存时叠加，零运行时开销
     """
     pix = QPixmap(image_path)
     if pix.isNull():
@@ -195,12 +191,6 @@ def _scale_and_cache_image(image_path: str, opacity: int = 100,
         for ty in range(0, canvas_h, pix.height()):
             for tx in range(0, canvas_w, pix.width()):
                 painter.drawPixmap(tx, ty, pix)
-
-    # 可读性增强遮罩 — 在图片上叠加半透明层，降低对比度让文字更清晰
-    if overlay_alpha > 0:
-        painter.setOpacity(overlay_alpha / 255.0)
-        overlay = QColor(0, 0, 0) if overlay_dark else QColor(255, 255, 255)
-        painter.fillRect(canvas.rect(), overlay)
 
     painter.end()
     canvas.save(_BG_CACHE, "PNG")
@@ -265,22 +255,10 @@ def apply_appearance(main_window) -> None:
     else:
         text_color = _text_color_for_bg(bg_color)
 
-    # ── 可读性增强遮罩：仅在有背景图 + 启用时生效 ──
-    overlay_alpha = 0
-    overlay_dark = True
-    if has_bg_image and cfg.get("overlay_enabled", False):
-        strength = cfg.get("overlay_strength", "medium")
-        alpha_map = {"light": 20, "medium": 38, "strong": 64}
-        overlay_alpha = alpha_map.get(strength, 38)
-        # 白字用暗化遮罩，黑字用亮化遮罩
-        overlay_dark = (text_color == "#ffffff")
-
     # 控制台输出当前外观参数，方便调试
-    ov_str = cfg.get("overlay_strength", "medium") if overlay_alpha else "off"
     print(f"[外观应用] 字体={font_family} {font_size}px, 背景={bg_color}, "
           f"亮度={_luminance(bg_color)}, 文字={text_color}, "
           f"模式={'手动' if text_color_mode == 'manual' else '自动'}, "
-          f"遮罩={overlay_alpha}/{ov_str}, "
           f"图片={'有' if has_bg_image else '无'}")
 
     # 暂停 resize timer，防止本次处理触发 resize 导致重入
@@ -305,8 +283,7 @@ def apply_appearance(main_window) -> None:
     if central is not None and bg_image and os.path.isfile(bg_image):
         csize = central.size()
         cached = _scale_and_cache_image(bg_image, bg_image_opacity, bg_image_mode,
-                                        csize.width(), csize.height(),
-                                        overlay_alpha, overlay_dark)
+                                        csize.width(), csize.height())
         escaped = cached.replace("\\", "/")
         style_parts.append(
             f"background-image: url({escaped});"
@@ -402,6 +379,19 @@ def apply_appearance(main_window) -> None:
                 page.setStyleSheet("background: transparent;")
 
     # 状态栏使用固定深灰色背景+白字，无需随外观联动刷新
+
+    # ── 4. 字号联动窗口缩放 ──
+    window_cfg = config_manager.get("window") or {}
+    if window_cfg.get("auto_resize_with_font", True):
+        old_font_size = getattr(main_window, "_last_applied_font_size", None)
+        if old_font_size is not None and old_font_size != font_size:
+            # 通过 WindowPanel 的缩放逻辑
+            settings_tab_obj = getattr(main_window, "_settings", None)
+            if settings_tab_obj:
+                win_panel = settings_tab_obj._panels.get("window")
+                if win_panel and hasattr(win_panel, "on_font_size_changed"):
+                    win_panel.on_font_size_changed(old_font_size, font_size)
+    main_window._last_applied_font_size = font_size
 
     # 清除标志位，允许 resizeEvent 恢复响应
     main_window._applying_appearance = False

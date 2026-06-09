@@ -70,10 +70,11 @@
   _gap_header_left       10            header"起卦"距窗口左侧的距离
   _gap_border_right      16            右边框线距combo下拉框右边缘的留白
 """
-from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
-                                QStackedWidget, QLabel, QButtonGroup, QCheckBox,
-                                QSpinBox, QComboBox, QFrame, QAbstractSpinBox)
-from PySide6.QtCore import Qt
+from PySide6.QtWidgets import (QGridLayout, QWidget, QVBoxLayout, QHBoxLayout,
+                                QPushButton, QStackedWidget, QLabel, QButtonGroup,
+                                QCheckBox, QSpinBox, QComboBox, QFrame, QSizePolicy,
+                                QAbstractSpinBox)
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QFont, QFontMetrics, QPainter, QPixmap, QColor, QPen, QPainterPath
 import os
 
@@ -83,8 +84,17 @@ from .bagua import GuaResult, COIN_TO_YAO, YARROW_TO_YAO
 from .hexagram_drawer import HexagramDrawer
 from .hexagram_calc import calc_three_numbers, calc_from_yang_lines, calc_six_lines, _yang_to_xiantian
 from .hexagram_loader import load_all_gua, get_gua_by_xiantian
+from ..algorithms.mutiDongyaoSel import get_judgment_line
 from .countdown_timer import CountdownDialog
 from .stopwatch_timer import StopwatchDialog
+from .suangua import SuanguaPanel
+from .CONST_DEFINE_UI import QiguaConfig
+import os
+
+# ── 调试断言：仅异常时输出到终端，方便排查问题 ──
+def _check(condition, msg):
+    if not condition:
+        print(f"[QiguaPanel] ⚠️ {msg}", flush=True)
 
 # ── 起卦方式注册表 ──
 METHODS = [
@@ -391,6 +401,8 @@ class QiguaPanel(QWidget):
         self._gap_cb_text = 1
         # 【可手动调整】"动"复选框到下拉框的额外间距（px），总间距 = "动"字宽度 + 此值
         self._gap_cb_combo_extra = 2
+        # 【可手动调整】起卦面板到算卦面板的水平间距（px）
+        self._gap_suangua = QiguaConfig.gap_suangua
         # 【可手动调整】Lock复选框到"动爻设置"文字右边的间距（px）
         self._gap_lock = 8
         # 【可手动调整】报数面板 Lock 文字到刷新按钮的间距（px）
@@ -399,6 +411,10 @@ class QiguaPanel(QWidget):
         self._gap_refresh_icon_scale = 1
         # 【可手动调整】结果文字到卦图的垂直距离（px）
         self._gap_result_top = -4
+        # 【可手动调整】动爻判断文字到结果文字的垂直间距（px）
+        self._gap_judgment_top = 4
+        # 【可手动调整】动爻判断文字字号偏移（相对全局字号的差值），负数=比正文小
+        self._fs_judgment = -2
         # 【可手动调整】报数面板按钮水平留白（px），按钮宽 = 两个汉字宽 + 此值
         self._gap_btn_pad = 30
         # 【可手动调整】报数面板按钮高度（px）
@@ -415,11 +431,18 @@ class QiguaPanel(QWidget):
         # 起点 = combo下拉框右边缘，_update_frame_max_width() 计算: ... + combo宽 + _gap_border_right
         self._gap_border_right = 16
 
-        # ── 第3步：root 布局（QVBoxLayout）──
+        # ── 第3步：root 布局（QVBoxLayout → panels_row）──
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0,
                                 self._gap_xs, self._gap_sm)
         root.setSpacing(0)
+
+        # panels_row — 起卦面板 + 算卦面板 水平并排
+        self._panels_row = QHBoxLayout()
+        self._panels_row.setContentsMargins(0, 0, 0, 0)
+        self._panels_row.setSpacing(self._gap_suangua)
+        root.addLayout(self._panels_row)
+        root.addStretch()  # 所有额外空间沉底，保证面板靠上对齐
 
         # ── 第4步：border_frame（右边+下边圆角矩形边框，无左/上边框）──
         # 右边框线向上戳到 header 行顶端，让方法选择器"嵌入"矩形框内
@@ -474,8 +497,23 @@ class QiguaPanel(QWidget):
         self._build_footer(self._footer_layout)
         self._frame_layout.addLayout(self._footer_layout)
 
-        root.addWidget(self._border_frame)
-        root.addStretch()  # 所有额外空间沉底，保证面板靠上对齐
+        # ── 第8.1步：动爻判断方式标签 ──
+        self._frame_layout.addSpacing(self._gap_judgment_top)
+        self._judgment_layout = QHBoxLayout()
+        self._judgment_layout.setContentsMargins(self._gap_header_left, 0, 0, 0)
+        self._judgment_layout.setSpacing(self._gap_sm)
+        self._label_judgment = QLabel("")
+        self._label_judgment.setWordWrap(True)
+        self._label_judgment.setStyleSheet(
+            f"QLabel {{ color: {self._text_color}; font-size: {self._font_size + self._fs_judgment}px; }}")
+        self._judgment_layout.addWidget(self._label_judgment, 1)
+        self._frame_layout.addLayout(self._judgment_layout)
+
+        self._panels_row.addWidget(self._border_frame)
+
+        # ── 第8.5步：算卦面板（右侧并排）──
+        self._suangua_panel = SuanguaPanel()
+        self._panels_row.addWidget(self._suangua_panel, 1)
 
         # ── 第9步：计算边框右边界最大宽度 ──
         self._update_frame_max_width()
@@ -685,7 +723,10 @@ class QiguaPanel(QWidget):
         title.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
         lay.addWidget(title)
 
-        lay.addSpacing(self._gap_lock)
+        lock_spacer = QWidget()
+        lock_spacer.setFixedWidth(self._gap_lock)
+        lock_spacer.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        lay.addWidget(lock_spacer)
 
         lock_cb = QCheckBox("Lock")
         lock_cb.setStyleSheet(f"QCheckBox {{ spacing: 4px; color: {self._text_color}; font-size: {self._font_size - 2}px; }}")
@@ -701,20 +742,13 @@ class QiguaPanel(QWidget):
     # ═══════════════════════════════════════════════════════════
 
     def _make_manual_panel(self) -> QWidget:
-        """
-        构建手工指定面板
+        """构建手工指定面板
 
-        布局：动爻设置标题行 + Lock复选框
-              + 6行复选框（初爻..上爻，从上而下排列）
-              + addStretch()
+        QVBoxLayout: title_row + 6 行 QWidget 容器（每行 setFixedHeight(line_h)），
+        与金钱面板一致的行高控制方式，确保与卦图爻线严格对齐。
 
-        每行一个 QCheckBox，勾选表示该爻为动爻。
-        toggled 信号连接到 _on_manual_changing_toggled()，更新 _changing_lines 集合。
-
-        Returns:
-            QWidget: 手工面板（objectName="manual_panel"）
-
-        调用时机：_build_right_panels() 中调用，仅一次
+        Lock 在 title_row 中，单动爻在 上爻行 col2 位置。
+        通过 _align_manual_columns() 对齐复选框宽度。
         """
         w = QWidget()
         w.setObjectName("manual_panel")
@@ -722,31 +756,74 @@ class QiguaPanel(QWidget):
         lay.setContentsMargins(0, 0, 0, 4)
         lay.setSpacing(0)
 
-        # "动爻设置" 标题行 + Lock 复选框
         name_h = self._drawer.name_area_h
+        self._manual_cbs: list[QCheckBox] = []
+        line_h = self._drawer.line_h
+
+        # Row 0: 标题行（与 lines/three 面板同款 _make_title_row，y=0）
         self._manual_title_row = self._make_title_row(name_h)
         lay.addWidget(self._manual_title_row)
 
-        self._manual_cbs: list[QCheckBox] = []
-        line_h = self._drawer.line_h
+        cb_font = QFont()
+        cb_font.setPointSize(self._font_size)
+
+        # Rows 1-6: QWidget 容器包裹每行，setFixedHeight(line_h) 确保与卦图对齐
         for i in range(5, -1, -1):
-            row = QHBoxLayout()
+            line_num = i + 1
+            row_wrapper = QWidget()
+            row_wrapper.setFixedHeight(line_h)
+            row_wrapper.setObjectName(f"manual_row_{line_num}")
+            row = QHBoxLayout(row_wrapper)
             row.setContentsMargins(0, 0, 0, 0)
             row.setSpacing(0)
-            cb = QCheckBox(LINE_NAMES[i])
-            cb.setFixedHeight(line_h)
-            cb.setStyleSheet(f"""
-                QCheckBox {{ spacing: 8px; color: {self._text_color}; }}
-            """)
-            line_num = i + 1  # 1=初爻..6=上爻
-            cb.toggled.connect(lambda checked, ln=line_num: self._on_manual_changing_toggled(ln, checked))
-            self._manual_cbs.append(cb)
-            row.addWidget(cb)
+
+            if i == 5:
+                self._shangyao_cb = QCheckBox("上爻")
+                self._shangyao_cb.setFont(cb_font)
+                self._shangyao_cb.setStyleSheet(f"QCheckBox {{ spacing: 8px; color: {self._text_color}; }}")
+                self._shangyao_cb.toggled.connect(lambda checked, ln=line_num: self._on_manual_changing_toggled(ln, checked))
+                self._manual_cbs.append(self._shangyao_cb)
+                row.addWidget(self._shangyao_cb)
+
+                spacer = QWidget()
+                spacer.setFixedWidth(self._gap_lock)
+                spacer.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+                row.addWidget(spacer)
+
+                self._single_line_cb = QCheckBox("单动爻")
+                self._single_line_cb.setFont(cb_font)
+                self._single_line_cb.setStyleSheet(f"QCheckBox {{ spacing: 4px; color: {self._text_color}; }}")
+                self._single_line_cb.toggled.connect(self._on_single_line_toggled)
+                row.addWidget(self._single_line_cb)
+            else:
+                cb = QCheckBox(LINE_NAMES[i])
+                cb.setFont(cb_font)
+                cb.setStyleSheet(f"QCheckBox {{ spacing: 8px; color: {self._text_color}; }}")
+                cb.toggled.connect(lambda checked, ln=line_num: self._on_manual_changing_toggled(ln, checked))
+                self._manual_cbs.append(cb)
+                row.addWidget(cb)
+
             row.addStretch()
-            lay.addLayout(row)
+            lay.addWidget(row_wrapper)
 
         lay.addStretch()
         return w
+
+    def _align_manual_columns(self):
+        """对齐 上爻 checkbox 宽度 → title_row 中 "动爻设置" 标签实际宽度
+
+        用 QFontMetrics 计算标题文字宽度，设置 上爻 checkbox 最小宽度，
+        确保 Lock（title_row 中）和 单动爻（上爻行中）的 x 坐标一致。
+        """
+        shangyao = getattr(self, "_shangyao_cb", None)
+        if shangyao is None:
+            return
+        fm = QFont()
+        fm.setPointSize(self._font_size)
+        fm.setBold(True)
+        m = QFontMetrics(fm)
+        title_w = m.horizontalAdvance("动爻设置")
+        shangyao.setMinimumWidth(title_w)
 
     # ═══════════════════════════════════════════════════════════
     #  右侧面板：报数（三位数）
@@ -1266,6 +1343,8 @@ class QiguaPanel(QWidget):
         # ── 第4步：手工面板复选框 ──
         for cb in self._manual_cbs:
             cb.setEnabled(enabled)
+        if hasattr(self, "_single_line_cb") and self._single_line_cb is not None:
+            self._single_line_cb.setEnabled(enabled)
         # ── 第5步：金钱/蓍草面板复选框 + 下拉框 ──
         for cb in getattr(self, "_lines_cbs", []):
             cb.setEnabled(enabled)
@@ -1372,19 +1451,22 @@ class QiguaPanel(QWidget):
 
     def _on_drawer_toggled(self, line_idx: int):
         """
-        卦图点击 → 翻转该爻阴阳，同步更新下拉框
+        卦图点击 → 翻转该爻阴阳
 
-        使用 _COIN_TOGGLE / _YARROW_TOGGLE 映射表翻转阴阳（保留变爻状态）：
-          老阳↔老阴（变爻翻转），少阳↔少阴（静爻翻转）
-
-        这是金钱/蓍草模式的"双向操作"：
-          卦图点击 → 更新 combo，combo 信号 → 更新卦图 + 复选框 + 自动起卦
+        手工模式：翻转阴阳后重新计算
+        金钱/蓍草模式：同步更新下拉框（保留变爻状态）
 
         Args:
             line_idx: drawer 爻索引 (0=初爻/bottom..5=上爻/top)
 
         调用时机：HexagramDrawer.line_toggled 信号触发
         """
+        if self._current_method == "manual":
+            # drawer 内部已翻转阴阳（mousePressEvent），直接重算
+            # 不修改 _changing_lines — 点击卦图只改阴阳，不动复选框
+            self._on_calc()
+            return
+
         if self._current_method not in ("coin", "yarrow"):
             return
         toggle_map = self._COIN_TOGGLE if self._current_method == "coin" else self._YARROW_TOGGLE
@@ -1819,6 +1901,17 @@ class QiguaPanel(QWidget):
         if hasattr(self, "_btn_refresh") and self._btn_refresh is not None:
             icon_size = max(14, int(name_h * self._gap_refresh_icon_scale))
             self._set_refresh_icon(self._text_color, icon_size)
+        # 更新手工面板 shangyao/single_line 复选框字号和样式
+        cb_font2 = QFont()
+        cb_font2.setPointSize(font_size)
+        if hasattr(self, "_shangyao_cb") and self._shangyao_cb is not None:
+            self._shangyao_cb.setFont(cb_font2)
+            self._shangyao_cb.setFixedHeight(line_h)
+            self._shangyao_cb.setStyleSheet(f"QCheckBox {{ spacing: 8px; color: {self._text_color}; }}")
+        if hasattr(self, "_single_line_cb") and self._single_line_cb is not None:
+            self._single_line_cb.setFont(cb_font2)
+            self._single_line_cb.setFixedHeight(line_h)
+            self._single_line_cb.setStyleSheet(f"QCheckBox {{ spacing: 4px; color: {self._text_color}; }}")
         root = self.layout()
         if root:
             root.setContentsMargins(0, 0,
@@ -1855,12 +1948,18 @@ class QiguaPanel(QWidget):
         # ── 第11步：更新 footer 按钮间距 ──
         self._footer_layout.setSpacing(self._gap_sm)
 
-        # ── 第12步：更新结果文字到卦图的垂直间距 ──
-        # frame_layout 索引: 0=header, 1=hdr_spacer, 2=content, 3=result_spacer
+        # ── 第12步：更新结果文字和判断文字的垂直间距 ──
         if hasattr(self, "_frame_layout"):
-            item2 = self._frame_layout.itemAt(3)
-            if item2 and item2.spacerItem():
-                item2.spacerItem().changeSize(0, self._gap_result_top)
+            # 索引: 3=result_spacer, 5=judgment_spacer
+            for idx, gap in ((3, self._gap_result_top), (5, self._gap_judgment_top)):
+                item = self._frame_layout.itemAt(idx)
+                if item and item.spacerItem():
+                    item.spacerItem().changeSize(0, gap)
+
+        # ── 第12.5步：更新动爻判断文字字号 ──
+        if hasattr(self, "_label_judgment") and self._label_judgment is not None:
+            self._label_judgment.setStyleSheet(
+                f"QLabel {{ color: {self._text_color}; font-size: {font_size + self._fs_judgment}px; }}")
 
         # ── 第13步：更新所有右侧面板的行高和顶部边距 ──
         for panel_idx in range(self._right_stack.count()):
@@ -1905,6 +2004,13 @@ class QiguaPanel(QWidget):
 
         # ── 第16步：Lock 状态下重新挂载自定义 indicator ──
         self._apply_lock_indicator()
+
+        # ── 第17步：延迟对齐手工面板列宽（等布局完成后再测 col0 实际宽度）──
+        QTimer.singleShot(0, self._align_manual_columns)
+
+        # ── 第18步：转发到算卦面板 ──
+        if hasattr(self, "_suangua_panel") and self._suangua_panel is not None:
+            self._suangua_panel.refresh_font_size(font_size)
 
     def _update_panel_layout(self, w: QWidget, line_h: int, name_h: int):
         """
@@ -2044,6 +2150,10 @@ class QiguaPanel(QWidget):
             cb.setStyleSheet(f"""
                 QCheckBox {{ spacing: 8px; color: {text_color}; }}
             """)
+        if hasattr(self, "_single_line_cb") and self._single_line_cb is not None:
+            self._single_line_cb.setStyleSheet(f"""
+                QCheckBox {{ spacing: 4px; color: {text_color}; }}
+            """)
 
         # ── 第3步：更新 header 方法标签 hover 颜色 ──
         for lbl in self._header_labels:
@@ -2093,6 +2203,10 @@ class QiguaPanel(QWidget):
 
         # ── 第6步：结果标签 ──
         self._label_result.setStyleSheet(f"QLabel {{ color: {text_color}; }}")
+        # 动爻判断文字
+        if hasattr(self, "_label_judgment") and self._label_judgment is not None:
+            self._label_judgment.setStyleSheet(
+                f"QLabel {{ color: {text_color}; font-size: {self._font_size + self._fs_judgment}px; }}")
 
         # ── 第7步：报数面板 spin + 按钮 文字颜色 ──
         spin_style = f"QSpinBox {{ padding: 3px 6px; border: 1px solid #dcdcdc; border-radius: 4px; background: transparent; color: {text_color}; }} QSpinBox:focus {{ border-color: #007aff; }}"
@@ -2122,6 +2236,10 @@ class QiguaPanel(QWidget):
 
         # Lock 状态下重新挂载自定义 indicator
         self._apply_lock_indicator()
+
+        # 转发到算卦面板
+        if hasattr(self, "_suangua_panel") and self._suangua_panel is not None:
+            self._suangua_panel.refresh_text_color(text_color)
 
     # ═══════════════════════════════════════════════════════════
     #  三位数：随机倒计时 / 秒表
@@ -2171,16 +2289,38 @@ class QiguaPanel(QWidget):
         手工模式下可多选动爻，更新 _changing_lines 集合后，
         立即同步到所有其他面板控件并重新起卦。
 
+        单动爻模式：勾选时仅保留当前爻，其他爻自动取消（单选行为）。
+
         Args:
             line_num: 爻位（1=初爻..6=上爻）
             checked:  True=勾选（该爻为动爻），False=取消
 
         调用时机：手工面板动爻复选框 toggled 信号触发
         """
+        single_mode = (self._single_line_cb is not None and self._single_line_cb.isChecked())
         if checked:
+            if single_mode:
+                self._changing_lines.clear()
             self._changing_lines.add(line_num)
         else:
             self._changing_lines.discard(line_num)
+        self._sync_controls_to_changing_lines()
+        self._on_calc()
+
+    def _on_single_line_toggled(self, checked: bool):
+        """"单动爻"复选框切换 — 限制最多只有一个动爻"""
+        if self._lock_checked:
+            return
+        if checked:
+            if self._changing_lines:
+                top = max(self._changing_lines)
+                self._changing_lines.clear()
+                self._changing_lines.add(top)
+            # 勾选单动爻 → 立即切到梅花
+            if hasattr(self, "_suangua_panel") and self._suangua_panel is not None:
+                self._suangua_panel.switch_method("meihua")
+        else:
+            self._changing_lines.clear()
         self._sync_controls_to_changing_lines()
         self._on_calc()
 
@@ -2213,6 +2353,12 @@ class QiguaPanel(QWidget):
             cb.blockSignals(True)
             cb.setChecked(line_num in changing)
             cb.blockSignals(False)
+        # 同步 单动爻 checkbox：>1 动爻时自动取消，≤1 时保持原状态
+        if hasattr(self, "_single_line_cb") and self._single_line_cb is not None:
+            if self._single_line_cb.isChecked() and len(changing) > 1:
+                self._single_line_cb.blockSignals(True)
+                self._single_line_cb.setChecked(False)
+                self._single_line_cb.blockSignals(False)
         # 金钱/蓍草面板：复选框 + 下拉框联动（始终同步，根据 combo 当前选项集判断金钱/蓍草）
         if self._lines_inputs:
             first_opt = self._lines_inputs[0].itemText(0) if self._lines_inputs[0].count() > 0 else ""
@@ -2590,3 +2736,17 @@ class QiguaPanel(QWidget):
         elif not result.changing_lines:
             text += " (六爻安静)"
         self._label_result.setText(text)
+
+        # 动爻判断方式（显示应参照哪一爻的爻辞断卦）
+        if ben and hasattr(self, "_label_judgment") and self._label_judgment is not None:
+            binary = ben.get("binary", "111111")
+            _, reason = get_judgment_line(binary, list(result.changing_lines))
+            self._label_judgment.setText(f"断法: {reason}")
+            _check(self._label_judgment.text(), "判断文字为空")
+
+        # 转发起卦结果到算卦面板
+        if hasattr(self, "_suangua_panel") and self._suangua_panel is not None and ben:
+            self._suangua_panel.set_gua_result(ben, list(result.changing_lines))
+            _check(self._suangua_panel._gua_result is not None, "suangua 未收到卦数据")
+            _check(self._suangua_panel._gua_result.get("full_name") == ben.get("full_name"),
+                   f"suangua 卦名不匹配: {self._suangua_panel._gua_result.get('full_name')} != {ben.get('full_name')}")

@@ -41,7 +41,10 @@
 【显示格式】
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   各项用 "  |  " 分隔，例如：
-    时间 15:30  |  真太阳时 15:12  |  农历 乙巳年三月十五  |  四柱 乙巳 庚辰 壬寅 丙午
+    时间(真) 15:30:05(15:12)  |  农历 乙巳年三月十五  |  四柱(真) 乙巳 庚辰 壬寅 丙午
+  临近时辰交界（≤2分钟）时自动显示秒：
+    - "排八字中使用"打勾 → 真太阳时显示秒（真太阳时决定时辰）
+    - 不打勾 → 平太阳时（北京时间）显示秒
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 【依赖】
@@ -339,13 +342,26 @@ class StatusBarManager:
 
         parts = []
 
-        # 1) 时间（精简格式）
-        #    启用真太阳时 → "时间(真) 14:30(14:12)"  北京时间(真太阳时)
-        #    否则         → "时间 14:30"
-        time_str = now.strftime("%H:%M")
+        # 临近时辰交界（≤2分钟）→ 显示秒，方便精确确认时辰切换时刻
+        # 秒加在哪个时间上取决于时辰判断依据：
+        #   "排八字中使用"打勾 → 真太阳时决定时辰 → 真太阳时显示秒
+        #   不打勾 → 平太阳时（北京时间）决定时辰 → 北京时间显示秒
+        near_boundary = self._timer.interval() == 1000
+
+        # 1) 时间
+        #    启用真太阳时 → "时间(真) 14:30:05(14:12)"  北京时间(真太阳时)
+        #    否则         → "时间 14:30:05"
+        if near_boundary and not use_solar_for_rate:
+            time_str = now.strftime("%H:%M:%S")
+        else:
+            time_str = now.strftime("%H:%M")
+
         if solar_enabled and show_solar:
             solar_now = true_solar_time(now, lon)
-            solar_str = solar_now.strftime("%H:%M")
+            if near_boundary and use_solar_for_rate:
+                solar_str = solar_now.strftime("%H:%M:%S")
+            else:
+                solar_str = solar_now.strftime("%H:%M")
             parts.append(f"时间(真) {time_str} ({solar_str})")
         else:
             parts.append(f"时间 {time_str}")
@@ -369,7 +385,7 @@ class StatusBarManager:
 
         # 4) 小六壬（仅显示掌诀名称，不显示断语）
         try:
-            xlr = xiaoliuren_now()
+            xlr = xiaoliuren_now(use_solar_time=bazi_solar, longitude=lon)
             fortune = "吉" if xlr["fortune"] else "凶"
             parts.append(f"{xlr['position']}({fortune})")
         except Exception:

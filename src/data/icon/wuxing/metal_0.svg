@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">
+  <!-- 阴金：钻石 — 宝石切割面造型 -->
+  <!-- 钻石主体 -->
+  <polygon points="12,1 21,8 12,22 3,8" fill="#80DEEA" stroke="#00BCD4" stroke-width="1" stroke-linejoin="round"/>
+  <!-- 切面线 -->
+  <line x1="12" y1="1" x2="12" y2="22" stroke="#4DD0E1" stroke-width="0.8"/>
+  <line x1="3" y1="8" x2="21" y2="8" stroke="#4DD0E1" stroke-width="0.8"/>
+  <!-- 高光 -->
+  <polygon points="12,1 7,6 12,8 17,6" fill="#E0F7FA" stroke="none" opacity="0.6"/>
+  <!-- 底尖高光 -->
+  <polygon points="12,12 12,22 8,15" fill="#B2EBF2" stroke="none" opacity="0.3"/>
+</svg>
