@@ -19,14 +19,14 @@
     }
   },
   "appearance": {
-    "background_color": "#373738",
+    "background_color": "#39393b",
     "background_image": "usrCfg/_bg_original.png",
     "font_family": "PingFang SC",
     "font_size": 17,
     "line_spacing": 1.5,
     "background_image_mode": "fit",
     "background_image_opacity": 100,
-    "text_color_mode": "manual",
+    "text_color_mode": "auto",
     "text_color": "#ffffff",
     "overlay_enabled": false,
     "overlay_strength": "light",
@@ -44,16 +44,17 @@
   },
   "general": {
     "last_tab_index": 0,
-    "qigua_method": "manual",
-    "suangua_method": "liuyao",
-    "liuyao_compact": false
+    "qigua_method": "three",
+    "suangua_method": "meihua",
+    "liuyao_compact": false,
+    "qigua_lines_mode": "coin"
   },
   "window": {
-    "lock_aspect_ratio": true,
+    "lock_aspect_ratio": false,
     "auto_resize_with_font": false,
     "auto_scale_factor": 1.0,
     "no_resize": false,
-    "window_width": 1043,
-    "window_height": 709
+    "window_width": 1024,
+    "window_height": 700
   }
 }

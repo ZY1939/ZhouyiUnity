@@ -7,15 +7,18 @@
 ═══════════════════════════════════════════════════════════════
 
 布局结构（ASCII art）：
-  ┌─ QiguaPanel (root QVBoxLayout) ──────────────────────────┐
-  │  ┌─ border_frame（无上/左边框，右边框线上戳到顶）──┐    │
-  │  │  header: 起卦 ●手工 ●报数 ●金钱 ●蓍草 (方法选择器) │    │
-  │  │  ── spacer ──                                     │    │
-  │  │  卦象长方形（左）  │  QStackedWidget(右，4面板切换) │    │
-  │  │  HexagramDrawer    │  [手工|报数|金钱/蓍草]          │    │
-  │  │  ── spacer ──                                     │    │
-  │  │  结果文字（本卦名称 → 变卦名称 / 六爻安静）           │    │
-  │  └────────────────────────────────────────────────────┘    │
+  ┌─ QiguaPanel (root QVBoxLayout) ──────────────────────────────┐
+  │  ┌─ panels_row (QHBoxLayout) ────────────────────────────┐  │
+  │  │  ┌─ border_frame（无上/左边框，右边框线上戳到顶）┐   │  │
+  │  │  │  header: 起卦 ●手工 ●报数 ●金钱 ●蓍草         │   │  │
+  │  │  │  ── spacer ──                                 │   │  │
+  │  │  │  卦象长方形（左）  │  QStackedWidget(右)      │   │  │
+  │  │  │  HexagramDrawer    │  [手工|报数|金钱/蓍草]    │   │  │
+  │  │  │  ← addStretch() 与 suangua_frame 底部对齐 →  │   │  │
+  │  │  └──────────────────────────────────────────────┘   │  │
+  │  │  SuanguaPanel（算卦面板，并排右侧）                  │  │
+  │  └──────────────────────────────────────────────────────┘  │
+  │  ButtonBar（截图 | 保存 | 读取 | AI）                      │
   │  ← addStretch() 所有额外空间沉底                           │
   └───────────────────────────────────────────────────────────┘
 
@@ -62,7 +65,6 @@
   _gap_cb_text           1             勾选框到"动"字的距离
   _gap_cb_combo_extra    2             "动"复选框到下拉框的额外间距
   _gap_lock              8             Lock复选框到"动爻设置"文字右边的间距
-  _gap_result_top        -4            结果文字到卦图的垂直距离（负值=上移）
   _gap_btn_pad           30            报数面板按钮水平留白
   _gap_btn_h             38            报数面板按钮高度
   _gap_mod_top_fs        3             mod标签字号偏移（相对全局字号减小量）
@@ -74,7 +76,7 @@ from PySide6.QtWidgets import (QGridLayout, QWidget, QVBoxLayout, QHBoxLayout,
                                 QPushButton, QStackedWidget, QLabel, QButtonGroup,
                                 QCheckBox, QSpinBox, QComboBox, QFrame, QSizePolicy,
                                 QAbstractSpinBox)
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QTimer, QPoint
 from PySide6.QtGui import QFont, QFontMetrics, QPainter, QPixmap, QColor, QPen, QPainterPath
 import os
 
@@ -88,6 +90,7 @@ from ...algorithms.mutiDongyaoSel import get_judgment_line
 from .countdown_timer import CountdownDialog
 from .stopwatch_timer import StopwatchDialog
 from ..suangua import SuanguaPanel
+from ..button import ButtonBar
 from ..CONST_DEFINE_UI import QiguaConfig
 import os
 
@@ -100,8 +103,7 @@ def _check(condition, msg):
 METHODS = [
     {"key": "manual", "label": "手工"},
     {"key": "three",  "label": "报数"},
-    {"key": "coin",   "label": "金钱"},
-    {"key": "yarrow", "label": "蓍草"},
+    {"key": "lines",  "label": "金钱/蓍草"},
 ]
 
 LINE_NAMES = ["初爻", "二爻", "三爻", "四爻", "五爻", "上爻"]
@@ -258,7 +260,7 @@ class QiguaPanel(QWidget):
       - 字体大小和文字颜色的全局联动刷新
 
     类属性说明（在 __init__ 中初始化）：
-      _current_method: str          当前起卦方式 ("manual"/"three"/"coin"/"yarrow")
+      _current_method: str          当前起卦方式 ("manual"/"three"/"lines")
                                     所有交互逻辑以此判断分支
       _prev_method: str             上一次起卦方式，用于 _switch_method() 判断
                                     是否需要初始化控件值（金钱↔蓍草互切不重新初始化）
@@ -293,6 +295,7 @@ class QiguaPanel(QWidget):
         super().__init__(parent)
         self._current_method = "manual"            # 当前起卦方式（见类属性说明）
         self._prev_method = "manual"               # 追踪上一次方法，用于切换时判断是否需要初始化控件值
+        self._lines_mode = "coin"                  # "coin" / "yarrow"，金钱/蓍草共用面板的子模式
         self._font_size = 16                       # 当前全局字体大小，refresh_font_size() 会更新
         self._text_color = "#1d1d1f"               # 默认深色文字，refresh_text_color() 会更新
         self._changing_lines: set[int] = set()     # 动爻集合（1=初爻..6=上爻），跨方法切换保留
@@ -326,7 +329,10 @@ class QiguaPanel(QWidget):
         combo_text_w = max(m.horizontalAdvance(t) for t in self.COIN_OPTIONS)
         combo_w = combo_text_w + 28
         # 3. 从 drawer 左侧累加到 combo 右边缘 + 右边距
-        max_w = self._drawer.width() + self._gap_drawer + cb_w + self._gap_cb_combo + combo_w + self._gap_border_right
+        content_w = self._drawer.minimumWidth() + self._gap_drawer + cb_w + self._gap_cb_combo + combo_w + self._gap_border_right
+        # 4. 工具栏按钮总宽（含 left_offset），取较大值确保 frame 足够容纳
+        bar_w = self._button_bar.total_button_width() + self._gap_border_right if hasattr(self, "_button_bar") else 0
+        max_w = max(content_w, bar_w)
         self._border_frame.setMaximumWidth(max_w)
 
     def _compute_cb_gaps(self):
@@ -389,12 +395,15 @@ class QiguaPanel(QWidget):
         """
         # ── 第1步：创建 drawer — 其 line_h 是所有间距的基准单位 ──
         self._drawer = HexagramDrawer()
+        self._drawer.set_font_size(self._font_size)  # 确保与 refresh_font_size 统一
         lh = self._drawer.line_h  # 基准行高，所有间距以此计算
 
         # ── 第2步：计算所有间距（以 line_h 为基准，随字体动态缩放）──
         self._gap_xs = max(2, int(lh * 0.12))   # 极小间距
         self._gap_sm = max(4, int(lh * 0.25))   # 小间距（面板内部）
         self._gap_md = max(6, int(lh * 0.45))   # 中等间距
+        # 【可手动调整】报数面板按钮水平留白（px），按钮宽 = 两个汉字宽 + 此值
+        self._gap_btn_pad = QiguaConfig.gap_btn_pad
         # 【可手动调整】卦图到右侧面板的水平距离（px）
         self._gap_drawer = 0
         # 【可手动调整】勾选框到"动"字的距离（px，QCheckBox spacing）
@@ -409,16 +418,8 @@ class QiguaPanel(QWidget):
         self._gap_refresh = 20
         # 【可手动调整】刷新按钮图标尺寸比例（相对 name_h，默认 0.85 = name_h 的 85%）
         self._gap_refresh_icon_scale = 1
-        # 【可手动调整】结果文字到卦图的垂直距离（px）
-        self._gap_result_top = -4
-        # 【可手动调整】动爻判断文字到结果文字的垂直间距（px）
-        self._gap_judgment_top = 4
-        # 【可手动调整】动爻判断文字字号偏移（相对全局字号的差值），负数=比正文小
-        self._fs_judgment = -2
-        # 【可手动调整】报数面板按钮水平留白（px），按钮宽 = 两个汉字宽 + 此值
-        self._gap_btn_pad = 30
         # 【可手动调整】报数面板按钮高度（px）
-        self._gap_btn_h = 38
+        self._gap_btn_h = QiguaConfig.gap_btn_h
         # 【可手动调整】mod 标签字号偏移（相对全局字号的减小量），上行"mod N"用
         self._gap_mod_top_fs = 3
         # 【可手动调整】余数值字号偏移（相对全局字号的减小量），下行余数用
@@ -442,6 +443,7 @@ class QiguaPanel(QWidget):
         self._panels_row.setContentsMargins(0, 0, 0, 0)
         self._panels_row.setSpacing(self._gap_suangua)
         root.addLayout(self._panels_row)
+
         root.addStretch()  # 所有额外空间沉底，保证面板靠上对齐
 
         # ── 第4步：border_frame（右边+下边圆角矩形边框，无左/上边框）──
@@ -487,27 +489,19 @@ class QiguaPanel(QWidget):
 
         self._frame_layout.addLayout(self._content_layout)
 
-        # ── 第7步：结果文字到卦图的垂直间距（可手动调整）──
-        self._frame_layout.addSpacing(self._gap_result_top)
+        # ── 工具栏按钮 — 截图 | AI | 保存 | 读取 ──
+        # 放在 _frame_layout 内（border_frame 内部），
+        # 左侧偏移 = drawer最小宽度 + _gap_drawer，使按钮与右侧输入面板对齐
+        self._button_bar = ButtonBar(
+            font_size=self._font_size,
+            btn_h=self._gap_btn_h, h_pad=self._gap_btn_pad,
+            btn_gap=self._gap_sm,
+            left_offset=self._drawer.minimumWidth() + self._gap_drawer,
+            screenshot_target=self)
+        self._frame_layout.addWidget(self._button_bar)
 
-        # ── 第8步：底部 footer — 结果文字 ──
-        self._footer_layout = QHBoxLayout()
-        self._footer_layout.setContentsMargins(self._gap_header_left, 0, 0, 0)
-        self._footer_layout.setSpacing(self._gap_sm)
-        self._build_footer(self._footer_layout)
-        self._frame_layout.addLayout(self._footer_layout)
-
-        # ── 第8.1步：动爻判断方式标签 ──
-        self._frame_layout.addSpacing(self._gap_judgment_top)
-        self._judgment_layout = QHBoxLayout()
-        self._judgment_layout.setContentsMargins(self._gap_header_left, 0, 0, 0)
-        self._judgment_layout.setSpacing(self._gap_sm)
-        self._label_judgment = QLabel("")
-        self._label_judgment.setWordWrap(True)
-        self._label_judgment.setStyleSheet(
-            f"QLabel {{ color: {self._text_color}; font-size: {self._font_size + self._fs_judgment}px; }}")
-        self._judgment_layout.addWidget(self._label_judgment, 1)
-        self._frame_layout.addLayout(self._judgment_layout)
+        # ── 第7步：frame 底部 stretch — 使 border_frame 高度可与 suangua_frame 对齐 ──
+        self._frame_layout.addStretch()
 
         self._panels_row.addWidget(self._border_frame)
 
@@ -520,6 +514,12 @@ class QiguaPanel(QWidget):
 
         # ── 第10步：从配置加载上次起卦方式，执行首次起卦 ──
         saved_method = config_manager.get("general", "qigua_method") or "manual"
+        # 兼容旧配置：旧值 "coin"/"yarrow" → "lines" + 设置 _lines_mode
+        if saved_method in ("coin", "yarrow"):
+            self._lines_mode = saved_method
+            saved_method = "lines"
+        elif saved_method == "lines":
+            self._lines_mode = config_manager.get("general", "qigua_lines_mode") or "coin"
         idx = next((i for i, m in enumerate(METHODS) if m["key"] == saved_method), 0)
         self._dots[idx].setChecked(True)
         self._switch_method(saved_method)
@@ -532,12 +532,13 @@ class QiguaPanel(QWidget):
         """
         构建方法选择器行（header）
 
-        结构：起卦(标题按钮) + 间距 + ●手工 ●报数 ●金钱 ●蓍草(4组dot+标签) + stretch
+        结构：起卦(标题按钮) + 间距 + ●手工 ●报数 ●金钱/蓍草(3组dot+标签) + stretch
 
         设计要点：
           - "起卦"标题同时也是起卦按钮（点击触发 _on_calc()）
-          - 每个方法由 _DotButton + QPushButton 标签组成，两者均可点击
-          - 标签间间距由 _update_header_alignment() 动态计算，使「蓍草」右边缘与下拉框右边缘对齐
+          - 手工/报数由 _DotButton + QPushButton 标签组成，两者均可点击
+          - 金钱/蓍草标签是切换按钮，点击在 coin/yarrow 间切换（不跳转方法）
+          - 标签间间距由 _update_header_alignment() 动态计算
           - 末尾 addStretch() 吸收额外空间
 
         Args:
@@ -577,7 +578,7 @@ class QiguaPanel(QWidget):
         self._btn_group = QButtonGroup(self)
         self._btn_group.setExclusive(True)
         self._dots: list[_DotButton] = []
-        self._header_labels: list[QPushButton] = []
+        self._header_labels: list = []  # QPushButton 或 ("lines", coin_btn, yarrow_btn, slash_lbl) 元组
 
         for i, m in enumerate(METHODS):
             dot = _DotButton()
@@ -585,20 +586,45 @@ class QiguaPanel(QWidget):
             self._dots.append(dot)
             header.addWidget(dot)
 
-            # 文字标签也是可点击的（flat QPushButton 仿 QLabel 外观）
-            lbl = QPushButton(m["label"])
-            lbl.setFlat(True)
-            lbl.setCursor(Qt.CursorShape.PointingHandCursor)
-            lbl.setStyleSheet(f"""
-                QPushButton {{
-                    color: #86868b; border: none; background: transparent;
-                    font-size: {self._font_size}px;
-                }}
-                QPushButton:hover {{ color: {self._text_color}; }}
-            """)
-            lbl.clicked.connect(lambda checked, idx=i: self._dots[idx].click())
-            self._header_labels.append(lbl)
-            header.addWidget(lbl)
+            if m["key"] == "lines":
+                # 金钱/蓍草 — 两个 QPushButton + "/" 分隔符，都绑定到小圆点
+                coin_btn = QPushButton("金钱")
+                coin_btn.setFlat(True)
+                coin_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+                coin_btn.clicked.connect(lambda checked, idx=i, k=m["key"]: self._on_method_label_clicked(k, idx, "coin"))
+                self._lines_coin_btn = coin_btn
+
+                slash_lbl = QLabel("/")
+                slash_lbl.setStyleSheet(f"QLabel {{ color: {self._dim_color()}; font-size: {self._font_size}px; background: transparent; }}")
+                slash_lbl.setFixedWidth(12)
+                slash_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                self._lines_slash_lbl = slash_lbl
+
+                yarrow_btn = QPushButton("蓍草")
+                yarrow_btn.setFlat(True)
+                yarrow_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+                yarrow_btn.clicked.connect(lambda checked, idx=i, k=m["key"]: self._on_method_label_clicked(k, idx, "yarrow"))
+                self._lines_yarrow_btn = yarrow_btn
+
+                self._header_labels.append(("lines", coin_btn, yarrow_btn, slash_lbl))
+                header.addWidget(coin_btn)
+                header.addWidget(slash_lbl)
+                header.addWidget(yarrow_btn)
+            else:
+                # 普通方法标签（手工/报数）— flat QPushButton，点击=点击对应dot
+                lbl = QPushButton(m["label"])
+                lbl.setFlat(True)
+                lbl.setCursor(Qt.CursorShape.PointingHandCursor)
+                lbl.setStyleSheet(f"""
+                    QPushButton {{
+                        color: {self._dim_color()}; border: none; background: transparent;
+                        font-size: {self._font_size}px;
+                    }}
+                    QPushButton:hover {{ color: {self._text_color}; }}
+                """)
+                lbl.clicked.connect(lambda checked, idx=i, k=m["key"]: self._on_method_label_clicked(k, idx))
+                self._header_labels.append(lbl)
+                header.addWidget(lbl)
 
             if i < len(METHODS) - 1:
                 header.addSpacing(0)  # _update_header_alignment() 会动态更新
@@ -608,15 +634,133 @@ class QiguaPanel(QWidget):
         # 初始计算标签间间距（依赖 drawer 宽度，须在 drawer 构造后调用）
         self._update_header_alignment()
 
+    def _on_method_label_clicked(self, key: str, idx: int, sub_mode: str = None):
+        """
+        方法标签点击 → 切换到对应方法
+
+        特殊处理：当 lines 已激活时再次点击 金钱/蓍草 → 切换 coin/yarrow 子模式。
+        当 lines 未激活时点击 金钱/蓍草 → 先设置子模式，再切到 lines。
+        否则点击标签 = 点击对应 dot（触发 _switch_method）。
+
+        Args:
+            key:      方法标识 ("manual"/"three"/"lines")
+            idx:      dot 在 _dots 列表中的索引
+            sub_mode: lines 子模式 ("coin"/"yarrow")，仅 lines 标签按钮传入
+        """
+        if key == "lines" and self._current_method == "lines":
+            # 已在 lines → 切换子模式
+            target = sub_mode or ("yarrow" if self._lines_mode == "coin" else "coin")
+            self._set_lines_mode(target)
+        elif key == "lines" and sub_mode:
+            # 从其他方法切到 lines → 按点击的按钮设置子模式并持久化
+            self._lines_mode = sub_mode
+            config_manager.set("general", "qigua_lines_mode", value=sub_mode)
+            self._dots[idx].click()
+        else:
+            self._dots[idx].click()
+
+    def _set_lines_mode(self, mode: str):
+        """
+        设置 _lines_mode（"coin" 或 "yarrow"）
+
+        仅在 lines 面板且 mode 不同时才更新。更新下拉框选项 + 刷新标签样式。
+
+        Args:
+            mode: "coin" 或 "yarrow"
+        """
+        if self._lines_mode == mode:
+            return
+        self._lines_mode = mode
+        self._update_lines_combo_options()
+        self._update_method_label_styles()
+        config_manager.set("general", "qigua_lines_mode", value=self._lines_mode)
+
+    def _dim_color(self) -> str:
+        """
+        返回 text_color 与 50% 灰色混合后的暗淡色，用于未选中标签。
+
+        深底白色(#ffffff) → #bfbfbf，浅底黑色(#1d1d1f) → #4e4e4f，
+        保证在任何背景下都有足够对比度。
+
+        Returns:
+            CSS hex 颜色字符串（如 "#bfbfbf"）
+        """
+        tc = self._text_color.lstrip("#")
+        r, g, b = int(tc[0:2], 16), int(tc[2:4], 16), int(tc[4:6], 16)
+        dim = lambda c: (c + 128) // 2  # 与 50% 灰混合
+        return f"#{dim(r):02x}{dim(g):02x}{dim(b):02x}"
+
+    def _update_method_label_styles(self):
+        """
+        更新 header 方法标签样式：当前选中 → 加粗+active_color，其余 → 灰色+normal
+
+        手工/报数是单个 QPushButton。
+        金钱/蓍草是两个 QPushButton（+ "/" 分隔符），选中时两个按钮都用 active_color，
+        但只有当前子模式（_lines_mode）对应的按钮加粗，另一个 normal weight。
+        """
+        method_keys = [m["key"] for m in METHODS]
+        for i, lbl in enumerate(self._header_labels):
+            key = method_keys[i]
+            is_active = key == self._current_method
+
+            if key == "lines":
+                # lbl 是 ("lines", coin_btn, yarrow_btn, slash_lbl) 元组
+                _, coin_btn, yarrow_btn, slash_lbl = lbl
+                is_coin = self._lines_mode == "coin"
+                fs_active = self._font_size       # 选中子模式：正常字号 + 加粗
+                fs_inactive = self._font_size - QiguaConfig.fs_lines_inactive_reduce  # 未选中子模式：缩小
+                # slash 颜色：选中时跟文字色，未选中时灰色
+                slash_color = self._text_color if is_active else self._dim_color()
+                ul = QiguaConfig.lines_underline and is_active  # 仅 lines 激活时才生效，避免非激活时偏高
+                underline_on = f"border-bottom: 2px solid {self._text_color}; padding-bottom: 2px;" if ul else ""
+                underline_off = "border-bottom: 2px solid transparent; padding-bottom: 2px;" if ul else ""
+                # slash 跟随按钮 padding，保证"/"与按钮文字在同一基线上
+                slash_pad = "padding-bottom: 2px;" if ul else ""
+                slash_lbl.setStyleSheet(f"QLabel {{ color: {slash_color}; font-size: {self._font_size}px; background: transparent; {slash_pad} }}")
+                # coin 按钮
+                coin_active = is_active and is_coin
+                coin_btn.setStyleSheet(f"""
+                    QPushButton {{
+                        color: {self._text_color if is_active else self._dim_color()};
+                        border: none; background: transparent;
+                        font-size: {fs_active if coin_active else fs_inactive}px;
+                        font-weight: {'bold' if coin_active else 'normal'};
+                        {underline_on if coin_active else underline_off}
+                    }}
+                    QPushButton:hover {{ color: {self._text_color}; }}
+                """)
+                # yarrow 按钮
+                yarrow_active = is_active and not is_coin
+                yarrow_btn.setStyleSheet(f"""
+                    QPushButton {{
+                        color: {self._text_color if is_active else self._dim_color()};
+                        border: none; background: transparent;
+                        font-size: {fs_active if yarrow_active else fs_inactive}px;
+                        font-weight: {'bold' if yarrow_active else 'normal'};
+                        {underline_on if yarrow_active else underline_off}
+                    }}
+                    QPushButton:hover {{ color: {self._text_color}; }}
+                """)
+            else:
+                lbl.setStyleSheet(f"""
+                    QPushButton {{
+                        color: {self._text_color if is_active else self._dim_color()};
+                        border: none; background: transparent;
+                        font-size: {self._font_size}px;
+                        font-weight: {'bold' if is_active else 'normal'};
+                    }}
+                    QPushButton:hover {{ color: {self._text_color}; }}
+                """)
+
     def _update_header_alignment(self):
         """
-        动态计算 header 方法标签间间距，使「蓍草」右边缘与下拉框右边缘对齐
+        动态计算 header 方法标签间间距，使「金钱/蓍草」右边缘与下拉框右边缘对齐
 
         计算逻辑：
           1. 计算右侧面板 combo 右边缘的绝对 x 坐标
           2. 计算 header 元素链总宽度（不含标签间间距）
           3. 可用空间 = combo_right - chain_start - chain_content_w
-          4. 3个方法间 gap = 可用空间 / 3（最小4px）
+          4. 2个方法间 gap = 可用空间 / 2（最小4px）
 
         调用时机：
           - _build_header() 末尾首次计算
@@ -632,23 +776,31 @@ class QiguaPanel(QWidget):
         cb_w = cb_text_w + self._gap_cb_text + 14  # 14 = checkbox indicator
         combo_text_w = max(metrics.horizontalAdvance(t) for t in self.COIN_OPTIONS)
         combo_w = combo_text_w + 28  # padding + dropdown arrow
-        combo_right = self._drawer.width() + self._gap_drawer + cb_w + self._gap_cb_combo + combo_w
+        combo_right = self._drawer.minimumWidth() + self._gap_drawer + cb_w + self._gap_cb_combo + combo_w
 
         # --- Header 元素宽度 ---
         title_w = metrics.horizontalAdvance("起卦") + 12
         dot_w = 14
-        label_ws = [metrics.horizontalAdvance(m["label"]) for m in METHODS]
-        chain_content_w = 4 * dot_w + sum(label_ws)  # dots + labels 不含间距
+        label_ws = []
+        for i, m in enumerate(METHODS):
+            if m["key"] == "lines":
+                # lines 是两个按钮 + "/" 分隔符
+                coin_w = metrics.horizontalAdvance("金钱")
+                yarrow_w = metrics.horizontalAdvance("蓍草")
+                label_ws.append(coin_w + 12 + yarrow_w)  # 12 = slash_lbl fixedWidth
+            else:
+                label_ws.append(metrics.horizontalAdvance(m["label"]))
+        chain_content_w = 3 * dot_w + sum(label_ws)  # dots + labels 不含间距
 
-        # --- 标签间间距：让「蓍草」右边缘 = combo 右边缘 ---
+        # --- 标签间间距：让「金钱/蓍草」右边缘 = combo 右边缘 ---
         # chain 起点 = 标题右边缘 + _gap_md（不碰这个间距，保持与原来一致）
         chain_start = title_w + self._gap_md
         available = combo_right - chain_start - chain_content_w
-        gap_method = max(4, available // 3)
+        gap_method = max(4, available // 2)
 
-        # --- 更新 3 个方法间 spacer（索引 4, 7, 10） ---
+        # --- 更新 2 个方法间 spacer（索引 4, 7） ---
         header = self._header_layout
-        for gap_idx in (4, 7, 10):
+        for gap_idx in (4, 7):
             item = header.itemAt(gap_idx)
             if item and item.spacerItem():
                 item.spacerItem().changeSize(gap_method, 0)
@@ -669,23 +821,6 @@ class QiguaPanel(QWidget):
         self._right_stack.addWidget(self._make_manual_panel())   # 0
         self._right_stack.addWidget(self._make_three_panel())    # 1
         self._right_stack.addWidget(self._make_lines_panel())    # 2 — 金钱/蓍草共用
-
-    def _build_footer(self, footer: QHBoxLayout):
-        """
-        构建底部结果文字区域
-
-        包含一个 QLabel 用于显示起卦结果：
-          格式: "䷀ 乾为天  →  ䷫ 天风姤" 或 "䷀ 乾为天 (六爻安静)"
-
-        Args:
-            footer: 父级 QHBoxLayout，由 _init_ui 创建并传入
-
-        调用时机：_init_ui() → _build_footer()，仅一次
-        """
-        self._label_result = QLabel("")
-        self._label_result.setWordWrap(True)
-        self._label_result.setStyleSheet(f"QLabel {{ color: {self._text_color}; }}")
-        footer.addWidget(self._label_result, 1)
 
     def _make_title_row(self, name_h: int) -> QWidget:
         """
@@ -1280,9 +1415,9 @@ class QiguaPanel(QWidget):
 
         调用时机：金钱/蓍草面板"动"复选框 toggled 信号触发
         """
-        if self._current_method not in ("coin", "yarrow"):
+        if self._current_method != "lines":
             return
-        toggle_map = self._COIN_CHANGING if self._current_method == "coin" else self._YARROW_CHANGING
+        toggle_map = self._COIN_CHANGING if self._lines_mode == "coin" else self._YARROW_CHANGING
         combo = self._lines_inputs[ui_idx]
         old_val = self._combo_val(combo)
         new_val = toggle_map.get(old_val)
@@ -1335,7 +1470,7 @@ class QiguaPanel(QWidget):
         if not enabled:
             self._drawer.set_clickable(False)           # 锁定时不可点击
         else:
-            self._drawer.set_clickable(self._current_method in ("manual", "coin", "yarrow"))  # 解锁后恢复可点击（报数模式除外）
+            self._drawer.set_clickable(self._current_method in ("manual", "lines"))  # 解锁后恢复可点击（报数模式除外）
 
         # ── 第3步：动爻复选框 indicator 样式 ──
         self._apply_lock_indicator()
@@ -1467,9 +1602,9 @@ class QiguaPanel(QWidget):
             self._on_calc()
             return
 
-        if self._current_method not in ("coin", "yarrow"):
+        if self._current_method != "lines":
             return
-        toggle_map = self._COIN_TOGGLE if self._current_method == "coin" else self._YARROW_TOGGLE
+        toggle_map = self._COIN_TOGGLE if self._lines_mode == "coin" else self._YARROW_TOGGLE
         combo_idx = 5 - line_idx  # drawer[0]=初爻(bottom) → combo[5]
         combo = self._lines_inputs[combo_idx]
         old_val = self._combo_val(combo)
@@ -1511,9 +1646,9 @@ class QiguaPanel(QWidget):
           - _switch_method() 中切换到金钱/蓍草模式
           - _sync_controls_to_changing_lines() 中跨模式同步
         """
-        mode = self._current_method
-        if mode not in ("coin", "yarrow"):
+        if self._current_method != "lines":
             return
+        mode = self._lines_mode
 
         # 读取 6 爻数值（从下而上：[初爻..上爻]），与 UI 顺序（从上而下）相反
         vals = [self._combo_val(self._lines_inputs[j]) for j in range(6)]
@@ -1554,7 +1689,7 @@ class QiguaPanel(QWidget):
           - _switch_method() 中切换到 coin/yarrow 模式时
           - _sync_controls_to_changing_lines() 中更新选项后
         """
-        mode = self._current_method
+        mode = self._lines_mode
         options = self.COIN_OPTIONS if mode == "coin" else self.YARROW_OPTIONS
         for combo in self._lines_inputs:
             combo.blockSignals(True)
@@ -1708,16 +1843,12 @@ class QiguaPanel(QWidget):
           4. 将当前卦图和动爻状态同步到新面板控件：
              - 手工模式：从 _changing_lines 恢复复选框勾选
              - 报数模式：用当前 spin 值直接起卦
-             - 金钱/蓍草模式：更新下拉选项 + 初始化值
+             - lines 模式：更新下拉选项 + 初始化值
                (金钱↔蓍草互切时通过 cross_map 保留已有值)
           5. 持久化当前方法到 usrCfg
 
-        金钱↔蓍草互切特殊处理：
-          当从 coin 切到 yarrow（或反之），_update_lines_combo_options 已通过
-          cross_map 正确映射各爻值，不需要重新从 _changing_lines 初始化。
-
         Args:
-            key: 起卦方式标识 ("manual"/"three"/"coin"/"yarrow")
+            key: 起卦方式标识 ("manual"/"three"/"lines")
 
         调用时机：
           - _on_dot_clicked() 中 dot 按钮点击
@@ -1728,14 +1859,14 @@ class QiguaPanel(QWidget):
         self._prev_method = prev
         self._current_method = key
         # ── 第2步：切换到对应 QStackedWidget 面板 ──
-        # manual→0, three→1, coin/yarrow→2（共用面板）
-        idx = {"manual": 0, "three": 1, "coin": 2, "yarrow": 2}[key]
+        # manual→0, three→1, lines→2
+        idx = {"manual": 0, "three": 1, "lines": 2}[key]
         self._right_stack.setCurrentIndex(idx)
 
         # ── 第3步：处理 Lock 状态下的卦图可点击性 ──
         # Lock 时一律不可点击；解锁后报数模式不可点击，其余模式可点击
         locked = any(cb.isChecked() for cb in self._lock_cbs)
-        self._drawer.set_clickable(key in ("manual", "coin", "yarrow") and not locked)
+        self._drawer.set_clickable(key in ("manual", "lines") and not locked)
 
         # ── 第4步：同步控件到当前卦图状态（保留已有卦象和动爻）──
         yang = self._drawer.yang_lines()  # 获取当前卦图的阴阳状态（6个bool）
@@ -1751,18 +1882,18 @@ class QiguaPanel(QWidget):
         elif key == "three":
             # 报数模式：用当前 spin 值直接起卦，动爻由 n3 mod6 决定
             self._run_three_auto()
-        elif key in ("coin", "yarrow"):
+        elif key == "lines":
             self._update_lines_combo_options(sync_final=False)
-            # 仅当从非金钱/蓍草模式切过来时，用 _changing_lines + yang 初始化值
-            # 金钱↔蓍草互切时 _update_lines_combo_options 已通过 cross_map 正确映射，不要覆盖
-            if prev not in ("coin", "yarrow"):
+            # 仅当从非 lines 模式切过来时，用 _changing_lines + yang 初始化值
+            # lines 面板内 coin↔yarrow 切换时 _update_lines_combo_options 已通过 cross_map 正确映射
+            if prev != "lines":
                 for i in range(6):
                     combo = self._lines_inputs[5 - i]
                     combo.blockSignals(True)
                     line_num = i + 1  # i=0→初爻(1), i=5→上爻(6)
                     is_yang = yang[i]
                     is_changing = line_num in self._changing_lines
-                    if key == "coin":
+                    if self._lines_mode == "coin":
                         val = 3 if (is_yang and is_changing) else (0 if (not is_yang and is_changing) else (1 if is_yang else 2))
                     else:
                         val = 9 if (is_yang and is_changing) else (6 if (not is_yang and is_changing) else (7 if is_yang else 8))
@@ -1780,12 +1911,13 @@ class QiguaPanel(QWidget):
         if hasattr(self, "_suangua_panel") and self._suangua_panel is not None:
             single_mode = hasattr(self, "_single_line_cb") and self._single_line_cb.isChecked()
             mgr = getattr(self.window(), "_statusbar_mgr", None)
-            if key in ("coin", "yarrow") and not single_mode:
-                self._suangua_panel.switch_method("liuyao")
-                label = METHODS[next(i for i, m in enumerate(METHODS) if m["key"] == key)]["label"]
-                if mgr:
-                    mgr.show_status(f'<span style="color:#007aff;">[Info] {label}起卦，切换为六爻</span>')
-                    QTimer.singleShot(5000, mgr.reset_status)
+            if key == "lines" and not single_mode:
+                # 仅当 suangua 不在六爻模式时才切换，避免重复跳转
+                if self._suangua_panel._current_method != "liuyao":
+                    self._suangua_panel.switch_method("liuyao")
+                    if mgr:
+                        mgr.show_status('<span style="color:#007aff;">[Info] 金钱/蓍草起卦，切换为六爻</span>')
+                        QTimer.singleShot(5000, mgr.reset_status)
             elif key == "three":
                 self._suangua_panel.switch_method("meihua")
                 if mgr:
@@ -1795,6 +1927,9 @@ class QiguaPanel(QWidget):
                 if mgr:
                     mgr.show_status('<span style="color:#007aff;">[Info] 手动指定起卦</span>')
                     QTimer.singleShot(5000, mgr.reset_status)
+
+        # ── 第7步：刷新方法标签选中样式 ──
+        self._update_method_label_styles()
 
     # ═══════════════════════════════════════════════════════════
     #  字体大小响应（刷新链入口）
@@ -1956,32 +2091,9 @@ class QiguaPanel(QWidget):
         if hasattr(self, "_border_frame"):
             self._update_frame_max_width()
 
-        for lbl in self._header_labels:
-            lbl.setStyleSheet(f"""
-                QPushButton {{
-                    color: #86868b; border: none; background: transparent;
-                    font-size: {font_size}px;
-                }}
-                QPushButton:hover {{ color: {self._text_color}; }}
-            """)
+        self._update_method_label_styles()
 
-        # ── 第11步：更新 footer 按钮间距 ──
-        self._footer_layout.setSpacing(self._gap_sm)
-
-        # ── 第12步：更新结果文字和判断文字的垂直间距 ──
-        if hasattr(self, "_frame_layout"):
-            # 索引: 3=result_spacer, 5=judgment_spacer
-            for idx, gap in ((3, self._gap_result_top), (5, self._gap_judgment_top)):
-                item = self._frame_layout.itemAt(idx)
-                if item and item.spacerItem():
-                    item.spacerItem().changeSize(0, gap)
-
-        # ── 第12.5步：更新动爻判断文字字号 ──
-        if hasattr(self, "_label_judgment") and self._label_judgment is not None:
-            self._label_judgment.setStyleSheet(
-                f"QLabel {{ color: {self._text_color}; font-size: {font_size + self._fs_judgment}px; }}")
-
-        # ── 第13步：更新所有右侧面板的行高和顶部边距 ──
+        # ── 第11步：更新所有右侧面板的行高和顶部边距 ──
         for panel_idx in range(self._right_stack.count()):
             w = self._right_stack.widget(panel_idx)
             self._update_panel_layout(w, line_h, name_h)
@@ -2031,6 +2143,40 @@ class QiguaPanel(QWidget):
         # ── 第18步：转发到算卦面板 ──
         if hasattr(self, "_suangua_panel") and self._suangua_panel is not None:
             self._suangua_panel.refresh_font_size(font_size)
+
+        # ── 第19步：转发到工具栏按钮 ──
+        if hasattr(self, "_button_bar") and self._button_bar is not None:
+            self._button_bar.refresh_font_size(
+                font_size,
+                btn_gap=self._gap_sm,
+                # ⚠️ 重要踩坑：必须用 minimumWidth() 不能用 width()
+                # apply_appearance 在首次 resizeEvent 中同步调用，Qt 布局未完成，
+                # width() 返回旧值(0或100)，导致 left_offset 算错、工具栏偏移。
+                # minimumWidth() 是 set_font_size() 显式设的，永远准确。
+                left_offset=self._drawer.minimumWidth() + self._gap_drawer,
+                h_pad=self._gap_btn_pad, btn_h=self._gap_btn_h)
+            # 延迟诊断：等 Qt 布局完成后再测 mapTo，否则返回 0
+            QTimer.singleShot(0, self._check_btn_alignment)
+
+    def _check_btn_alignment(self):
+        """布局完成后实测保存↔随机、读取↔秒表 x 坐标，不一致时终端告警"""
+        bf = self._border_frame
+        if not hasattr(self, "_btn_random") or self._btn_random is None:
+            return
+        if not hasattr(self, "_button_bar") or self._button_bar is None:
+            return
+        # 实测报数按钮在 border_frame 中的 x
+        rand_x = self._btn_random.mapTo(bf, QPoint(0, 0)).x()
+        save_btn = self._button_bar._btns[self._button_bar._I_SAVE]
+        save_x = save_btn.mapTo(bf, QPoint(0, 0)).x()
+        if abs(rand_x - save_x) > 1:
+            print(f"[ButtonBar对齐] ⚠️ 保存.x={save_x} ≠ 随机.x={rand_x} diff={abs(rand_x - save_x)}", flush=True)
+        if hasattr(self, "_btn_sw") and self._btn_sw is not None:
+            sw_x = self._btn_sw.mapTo(bf, QPoint(0, 0)).x()
+            load_btn = self._button_bar._btns[self._button_bar._I_LOAD]
+            load_x = load_btn.mapTo(bf, QPoint(0, 0)).x()
+            if abs(sw_x - load_x) > 1:
+                print(f"[ButtonBar对齐] ⚠️ 读取.x={load_x} ≠ 秒表.x={sw_x} diff={abs(sw_x - load_x)}", flush=True)
 
     def _update_panel_layout(self, w: QWidget, line_h: int, name_h: int):
         """
@@ -2176,14 +2322,7 @@ class QiguaPanel(QWidget):
             """)
 
         # ── 第3步：更新 header 方法标签 hover 颜色 ──
-        for lbl in self._header_labels:
-            lbl.setStyleSheet(f"""
-                QPushButton {{
-                    color: #86868b; border: none; background: transparent;
-                    font-size: {self._font_size}px;
-                }}
-                QPushButton:hover {{ color: {text_color}; }}
-            """)
+        self._update_method_label_styles()
 
         # ── 第4步：报数面板 Lock 复选框 + 标签行 ──
         for row_attr in ("_three_title_row",):
@@ -2221,14 +2360,7 @@ class QiguaPanel(QWidget):
                 QComboBox QAbstractItemView {{ {self._dropdown_style()} }}
             """)
 
-        # ── 第6步：结果标签 ──
-        self._label_result.setStyleSheet(f"QLabel {{ color: {text_color}; }}")
-        # 动爻判断文字
-        if hasattr(self, "_label_judgment") and self._label_judgment is not None:
-            self._label_judgment.setStyleSheet(
-                f"QLabel {{ color: {text_color}; font-size: {self._font_size + self._fs_judgment}px; }}")
-
-        # ── 第7步：报数面板 spin + 按钮 文字颜色 ──
+        # ── 第6步：报数面板 spin + 按钮 文字颜色 ──
         spin_style = f"QSpinBox {{ padding: 3px 6px; border: 1px solid #dcdcdc; border-radius: 4px; background: transparent; color: {text_color}; }} QSpinBox:focus {{ border-color: #007aff; }}"
         for spin_attr in ("_spin_n1", "_spin_n2", "_spin_n3"):
             spin = getattr(self, spin_attr, None)
@@ -2260,6 +2392,10 @@ class QiguaPanel(QWidget):
         # 转发到算卦面板
         if hasattr(self, "_suangua_panel") and self._suangua_panel is not None:
             self._suangua_panel.refresh_text_color(text_color)
+
+        # 转发到工具栏按钮
+        if hasattr(self, "_button_bar") and self._button_bar is not None:
+            self._button_bar.refresh_text_color(text_color)
 
     # ═══════════════════════════════════════════════════════════
     #  三位数：随机倒计时 / 秒表
@@ -2643,8 +2779,8 @@ class QiguaPanel(QWidget):
             n3 = self._spin_n3.value()
             self._run_three_calc(n1, n2, n3)
 
-        elif key in ("coin", "yarrow"):
-            mode = key
+        elif key == "lines":
+            mode = self._lines_mode
             vals = [self._combo_val(self._lines_inputs[j]) for j in range(6)]
             # 从 combo 值更新 _changing_lines
             self._changing_lines = set()
@@ -2719,16 +2855,10 @@ class QiguaPanel(QWidget):
 
     def _show_result(self, result: GuaResult):
         """
-        显示起卦结果：卦图更新 + 底部详情文字
-
-        显示格式：
-          - 有变卦：  "䷀ 乾为天  →  ䷫ 天风姤"
-          - 无变卦：  "䷀ 乾为天 (六爻安静)"
-          - 异常时：  "? ?"
-          - 无变卦且结果为None时显示 "(六爻安静)"
+        显示起卦结果：卦图更新 + 转发到算卦面板
 
         GuaResult 数据流：
-          hexagram_calc 创建 → _show_result() 显示 → case_manager 存储
+          hexagram_calc 创建 → _show_result() 显示 → suangua_panel / case_manager
 
         Args:
             result: 由 calc_three_numbers / calc_from_yang_lines / calc_six_lines 返回
@@ -2744,25 +2874,6 @@ class QiguaPanel(QWidget):
             binary = ben.get("binary", "111111")
             yang = [c == "1" for c in binary]
             self._drawer.set_lines(yang)
-
-        # 底部详情
-        symbol = ben.get("symbol", "?")
-        name = ben.get("full_name", "?")
-        text = f"{symbol} {name}"
-        if bian:
-            b_symbol = bian.get("symbol", "?")
-            b_name = bian.get("full_name", "?")
-            text += f"  →  {b_symbol} {b_name}"
-        elif not result.changing_lines:
-            text += " (六爻安静)"
-        self._label_result.setText(text)
-
-        # 动爻判断方式（显示应参照哪一爻的爻辞断卦）
-        if ben and hasattr(self, "_label_judgment") and self._label_judgment is not None:
-            binary = ben.get("binary", "111111")
-            _, reason = get_judgment_line(binary, list(result.changing_lines))
-            self._label_judgment.setText(f"断法: {reason}")
-            _check(self._label_judgment.text(), "判断文字为空")
 
         # 转发起卦结果到算卦面板
         if hasattr(self, "_suangua_panel") and self._suangua_panel is not None and ben:

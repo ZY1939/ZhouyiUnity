@@ -231,10 +231,18 @@ class StatusBarManager:
             f"QStatusBar {{ background-color: {bg}; }}"
         )
 
-        # 左侧永久状态标签（"就绪" / "定位中..." / "AI 等待回答..."）
+        # 左侧状态标签 — QLabel 支持 HTML 富文本着色
         self._status_label = QLabel("就绪")
-        self._status_label.setStyleSheet(f"font-size: 13px; color: {text}; padding: 0 12px;")
+        self._status_label.setTextFormat(Qt.TextFormat.RichText)
+        self._status_label.setStyleSheet(
+            f"font-size: 13px; color: {text}; padding: 0 12px; "
+            "background: transparent; border: none;")
         self._bar.addWidget(self._status_label)
+
+        # 状态消息自动恢复定时器（5秒后回到"就绪"）
+        self._status_reset_timer = QTimer()
+        self._status_reset_timer.setSingleShot(True)
+        self._status_reset_timer.timeout.connect(self.reset_status)
 
         # QLabel 作为永久 Widget 添加到状态栏右侧（时间/农历/四柱）
         self._label = QLabel()
@@ -397,36 +405,31 @@ class StatusBarManager:
 
     def show_status(self, text: str):
         """
-        更新状态栏左侧的状态文字
+        更新状态栏左侧的状态文字，5秒后自动恢复为"就绪"
+
+        QLabel 支持 HTML 富文本，可使用 span style 着色。
 
         参数:
-            text (str): 要显示的状态文字，如 "定位中..."、"AI 等待回答..."
-
-        返回:
-            None
+            text (str): 要显示的状态文字（支持 HTML，如带颜色的 span）
 
         用法:
-            >>> # 从任意面板中调用（通过 _get_statusbar_mgr 辅助函数）
             >>> mgr = _get_statusbar_mgr(self)
-            >>> mgr.show_status("定位中...")
+            >>> mgr.show_status('<span style="color:#007aff;">[Info] 图片已保存到 xxx</span>')
         """
         self._status_label.setText(text)
+        self._status_label.setToolTip(text)
+        self._status_reset_timer.start(5000)
 
     def reset_status(self):
         """
-        将状态栏左侧文字恢复为默认的"就绪"
-
-        参数:
-            （无参数）
-
-        返回:
-            None
+        将状态栏左侧文字恢复为默认的"就绪"，停止自动恢复定时器
 
         用法:
-            >>> mgr = _get_statusbar_mgr(self)
             >>> mgr.reset_status()
         """
+        self._status_reset_timer.stop()
         self._status_label.setText("就绪")
+        self._status_label.setToolTip("")
 
 
 def _get_statusbar_mgr(widget):

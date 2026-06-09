@@ -14,3 +14,4 @@ UI 组件：
 """
 from .hexagram_drawer import HexagramDrawer, _app_font
 from .dot_button import DotButton
+from .method_label_bar import MethodLabelBar

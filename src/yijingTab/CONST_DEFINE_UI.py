@@ -29,6 +29,10 @@ class QiguaConfig:
     gap_module_left = 10
     # 方法选择器中心到面板顶部的垂直距离（px）
     ydist_menu2top = 20
+    # "金钱/蓍草"切换中未选中子模式字号缩减量（px），选中子模式正常字号，未选中缩小此值
+    fs_lines_inactive_reduce = 2
+    # 选中子模式是否显示下划线（border-bottom），True=显示，False=不显示
+    lines_underline = True
 
     # === 模组间距 ===
     # 模组到窗口最右侧边缘的留白（px）
@@ -64,9 +68,9 @@ class QiguaConfig:
     # 刷新按钮图标尺寸比例（相对 name_h，默认 1.0 = name_h 的 100%）
     gap_refresh_icon_scale = 1.0
     # 报数面板按钮水平留白（px），按钮宽 = 两个汉字宽 + 此值
-    gap_btn_pad = 30
+    gap_btn_pad = 30 # 按钮水平留白（px），按钮宽 = 两个汉字宽 + 此值
     # 报数面板按钮高度（px）
-    gap_btn_h = 38
+    gap_btn_h = 38 # 随机 秒表 按钮高度
 
     # === 结果区域 ===
     # 结果文字到卦图的垂直距离（px），负值=上移

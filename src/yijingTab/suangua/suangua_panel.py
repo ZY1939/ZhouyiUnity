@@ -25,11 +25,13 @@ from PySide6.QtGui import QFont, QFontMetrics
 
 from ...settings.config_manager import config_manager
 from ..com.dot_button import DotButton
+from ..com.method_label_bar import MethodLabelBar
 from ..CONST_DEFINE_UI import SuanguaConfig
 from .meihua_panel import MeihuaPanel
 from .liuyao_panel import LiuyaoPanel
-from .common import (_TimePickerDialog, compute_current_ganzhi,
+from .common import (compute_current_ganzhi,
                      ganzhi_to_approx_year, gregorian_to_ganzhi_parts, _DIZHI_LIST)
+from .Window_timeSetting import Window_timeSetting
 
 
 class SuanguaPanel(QWidget):
@@ -121,8 +123,7 @@ class SuanguaPanel(QWidget):
 
         # ── 加载上次选择的方法 ──
         saved = config_manager.get("general", "suangua_method") or "meihua"
-        idx = next((i for i, m in enumerate(self.METHODS) if m["key"] == saved), 0)
-        self._dots[idx].setChecked(True)
+        self._method_bar.set_current_method(saved)
         self._switch_method(saved)
 
     def _build_header(self):
@@ -146,47 +147,22 @@ class SuanguaPanel(QWidget):
             }}
             QPushButton:hover {{ color: #0056cc; }}
         """)
-        self._header_layout.addWidget(self._title_label, 0, Qt.AlignmentFlag.AlignVCenter)
+        self._header_layout.addWidget(self._title_label)
 
-        # gap after title — 使用与 qigua header 一致的公式
-        self._gap_md = max(6, int(28 * 0.45))  # 默认值，refresh_font_size 会更新
+        # gap after title
+        self._gap_md = max(6, int(28 * 0.45))
         self._header_layout.addSpacing(self._gap_md)
 
-        self._btn_group = QButtonGroup(self)
-        self._btn_group.setExclusive(True)
-        self._dots: list[DotButton] = []
-        self._header_labels: list[QPushButton] = []
-
-        for i, m in enumerate(self.METHODS):
-            dot = DotButton()
-            self._btn_group.addButton(dot, i)
-            self._dots.append(dot)
-            self._header_layout.addWidget(dot, 0, Qt.AlignmentFlag.AlignVCenter)
-
-            lbl = QPushButton(m["label"])
-            lbl.setFlat(True)
-            lbl.setCursor(Qt.CursorShape.PointingHandCursor)
-            lbl.setStyleSheet(f"""
-                QPushButton {{
-                    color: #86868b; border: none; background: transparent;
-                    font-size: {self._font_size}px;
-                }}
-                QPushButton:hover {{ color: {self._text_color}; }}
-            """)
-            lbl.clicked.connect(lambda checked, idx=i: self._dots[idx].click())
-            self._header_labels.append(lbl)
-            self._header_layout.addWidget(lbl, 0, Qt.AlignmentFlag.AlignVCenter)
-
-            if i < len(self.METHODS) - 1:
-                # 使用与 qigua header 一致的间距方法
-                self._header_layout.addSpacing(20)  # 会被 _update_header_spacing 更新
-
-        self._header_layout.addStretch()
+        # ── 方法标签栏（公共组件 MethodLabelBar）──
+        self._method_bar = MethodLabelBar(
+            self.METHODS, self._font_size, self._text_color, bg_color="transparent", spacing=20)
+        self._method_bar.method_selected.connect(self._on_bar_method_selected)
+        self._header_layout.addWidget(self._method_bar)
 
         # ── 时间显示 ──
         self._time_label = QLabel("")
         self._time_label.setStyleSheet(
-            f"font-size: {self._font_size}px; color: #ffffff; background: transparent;"
+            f"font-size: {self._font_size}px; color: {self._text_color}; background: transparent;"
         )
         self._header_layout.addWidget(self._time_label, 0, Qt.AlignmentFlag.AlignVCenter)
 
@@ -229,36 +205,32 @@ class SuanguaPanel(QWidget):
         # 右侧留白
         self._header_layout.addSpacing(12)
 
-        self._btn_group.buttonClicked.connect(self._on_dot_clicked)
-
-    def _on_dot_clicked(self, btn):
-        idx = self._btn_group.id(btn)
-        key = self.METHODS[idx]["key"]
-        # 多动爻(>1)不支持梅花 → 回退 dot 状态 + 状态栏警告，不切换
+    def _on_bar_method_selected(self, key: str):
+        """MethodLabelBar 方法选中 → 多动爻梅花守卫 + 切换"""
         if key == "meihua" and len(self._changing_lines) > 1:
-            # QButtonGroup 已将梅花选蓝、六爻取消 → 回退（不 blockSignals，
-            # 让 _on_toggled 正常更新样式，且程序化 setChecked 不触发 buttonClicked）
-            self._dots[0].setChecked(False)
-            self._dots[1].setChecked(True)
+            self._method_bar.set_current_method("liuyao")
             mgr = getattr(self.window(), "_statusbar_mgr", None)
             if mgr:
                 mgr.show_status('<span style="color:#f0a030;">[Warn] 多动爻不支持梅花易数，请使用六爻</span>')
                 QTimer.singleShot(5000, mgr.reset_status)
             return
         self._switch_method(key)
+        mgr = getattr(self.window(), "_statusbar_mgr", None)
+        if mgr:
+            label = "梅花易数" if key == "meihua" else "六爻"
+            mgr.show_status(f'<span style="color:#007aff;">[Info] 已切换为{label}</span>')
+            QTimer.singleShot(5000, mgr.reset_status)
 
     def switch_method(self, key: str):
         """
-        公开方法 — 切换算卦方法并同步更新 dot 按钮选中状态
+        公开方法 — 切换算卦方法并同步更新 MethodLabelBar 选中状态
 
-        与 _switch_method 的区别：同时更新 dot 按钮的 checked 状态，
         供外部（如 divination_panel 自适应切换）调用。
 
         Args:
             key: 算卦方法标识 ("meihua" / "liuyao")
         """
-        idx = {"meihua": 0, "liuyao": 1}[key]
-        self._dots[idx].setChecked(True)
+        self._method_bar.set_current_method(key)
         self._switch_method(key)
 
     def _switch_method(self, key: str):
@@ -292,7 +264,7 @@ class SuanguaPanel(QWidget):
     def _on_edit_clicked(self):
         """打开时间选择器弹窗"""
         self._ensure_time()
-        dlg = _TimePickerDialog(self._current_ganzhi, self)
+        dlg = Window_timeSetting(self._current_ganzhi, self)
         if dlg.exec() == QDialog.DialogCode.Accepted:
             result = dlg.result()
             if result:
@@ -360,14 +332,9 @@ class SuanguaPanel(QWidget):
 
         if n > 1:
             # 多动爻：梅花不可用（灰色但仍可点击 → 点击时状态栏警告）
-            self._dots[0].setEnabled(True)
-            self._header_labels[0].setEnabled(True)
-            self._header_labels[0].setStyleSheet(f"""
-                QPushButton {{ color: #aaa; border: none; background: transparent; font-size: {self._font_size}px; }}
-            """)
+            self._method_bar.set_label_enabled(0, False)
             if self._current_method == "meihua":
-                self._dots[1].setChecked(True)
-                self._switch_method("liuyao")
+                self.switch_method("liuyao")
                 mgr = getattr(self.window(), "_statusbar_mgr", None)
                 if mgr:
                     mgr.show_status('<span style="color:#007aff;">[Info] 多动爻不支持梅花，已切换为六爻</span>')
@@ -375,15 +342,7 @@ class SuanguaPanel(QWidget):
             return
 
         # n <= 1: 梅花可用，更新数据
-        self._dots[0].setEnabled(True)
-        self._header_labels[0].setEnabled(True)
-        self._header_labels[0].setStyleSheet(f"""
-            QPushButton {{
-                color: #86868b; border: none; background: transparent;
-                font-size: {self._font_size}px;
-            }}
-            QPushButton:hover {{ color: {self._text_color}; }}
-        """)
+        self._method_bar.set_label_enabled(0, True)
         self._meihua_panel.set_gua_result(ben_data, changing_lines)
 
     def refresh_font_size(self, font_size: int):
@@ -433,23 +392,11 @@ class SuanguaPanel(QWidget):
             gap_item.spacerItem().changeSize(self._gap_md, 0)
 
         # ── method labels ──
-        for lbl in self._header_labels:
-            if lbl.isEnabled():
-                lbl.setStyleSheet(f"""
-                    QPushButton {{
-                        color: #86868b; border: none; background: transparent;
-                        font-size: {font_size}px;
-                    }}
-                    QPushButton:hover {{ color: {self._text_color}; }}
-                """)
-            else:
-                lbl.setStyleSheet(f"""
-                    QPushButton {{ color: #aaa; border: none; background: transparent; font-size: {font_size}px; }}
-                """)
+        self._method_bar.refresh_font_size(font_size)
 
         # ── 时间标签 ──
         self._time_label.setStyleSheet(
-            f"font-size: {font_size}px; color: #ffffff; background: transparent;"
+            f"font-size: {font_size}px; color: {self._text_color}; background: transparent;"
         )
 
         # ── 修改/现在按钮 ──
@@ -494,18 +441,16 @@ class SuanguaPanel(QWidget):
             """)
 
         # ── method labels hover color ──
-        for lbl in self._header_labels:
-            if lbl.isEnabled():
-                lbl.setStyleSheet(f"""
-                    QPushButton {{
-                        color: #86868b; border: none; background: transparent;
-                        font-size: {self._font_size}px;
-                    }}
-                    QPushButton:hover {{ color: {text_color}; }}
-                """)
+        self._method_bar.refresh_text_color(text_color)
 
         # ── 梅花面板 ──
         self._meihua_panel.set_text_color(text_color)
+
+        # ── 时间标签 ──
+        if hasattr(self, "_time_label"):
+            self._time_label.setStyleSheet(
+                f"font-size: {self._font_size}px; color: {text_color}; background: transparent;"
+            )
 
         # ── 六爻面板 ──
         self._liuyao_panel.set_text_color(text_color)
