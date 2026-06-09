@@ -21,7 +21,7 @@ import datetime
 
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
                                 QLabel, QFrame, QApplication)
-from PySide6.QtCore import Qt, QTimer, QEvent
+from PySide6.QtCore import Qt, QTimer, QEvent, QPointF
 from PySide6.QtGui import QFontMetrics, QColor, QPen, QPainter
 
 from ..hexagram_drawer import HexagramDrawer, _app_font
@@ -32,11 +32,16 @@ from ...algorithms.liuyao import (analyze_gua, get_fushen, get_gua_type_tags,
 from ...algorithms.wuxingTools import (
     DIZHI_WUXING,
     WUXING_BASE_COLORS,
+    WUXING_SHENG,
+    WUXING_KE,
     LIUQIN_COMPACT,
     LIUSHEN_INFO,
     TI_COLOR, YONG_COLOR, O_COLOR, X_COLOR,
     compact_liuqin, get_wuxing_base_color, get_liushen_fill,
+    get_liuqin,
 )
+from ..bagua import BINARY_TO_GUA
+from ..hexagram_loader import load_all_gua
 
 # ── 从 common 导入公共组件 ──
 from .common import (_LineMarker, is_light_color, build_interpretation)
@@ -377,6 +382,94 @@ class _TypeBadgeBar(QWidget):
 
 
 # ═══════════════════════════════════════════════════════════════
+#  _ArrowColumn — 本卦→变卦 动爻箭头列
+# ═══════════════════════════════════════════════════════════════
+
+class _ArrowColumn(QWidget):
+    """
+    在每爻动爻位置绘制箭头，连接本卦六亲和变卦
+
+    被动爻克/生 → 左箭头（←），其他 → 右箭头（→）
+    克=红色填充，生=绿色填充，比和=蓝色
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._arrows: list[tuple[int, str, str]] = []  # [(line_idx, direction, color), ...]
+        self._name_area_h = 0
+        self._line_h = 0
+        self._offset_y = 0
+        self._arrow_w_scale = LiuyaoConfig.arrow_width_scale
+
+    def configure(self, name_area_h: int, line_h: int, offset_y: int = 0):
+        self._name_area_h = name_area_h
+        self._line_h = line_h
+        self._offset_y = offset_y
+        self.setFixedHeight(name_area_h + 6 * line_h)
+        self._update_width()
+
+    def set_arrow_width_scale(self, scale: float):
+        self._arrow_w_scale = scale
+        self._update_width()
+        self.update()
+
+    def set_arrows(self, arrows: list[tuple[int, str, str]]):
+        """
+        设置箭头数据
+
+        Args:
+            arrows: [(line_idx, direction, color), ...]
+                    line_idx: 0=初爻..5=上爻
+                    direction: "left" 或 "right"
+                    color: hex 颜色字符串
+        """
+        self._arrows = arrows
+        self.update()
+
+    def _update_width(self):
+        """箭头宽 = line_h * arrow_width_scale，确保最小宽度"""
+        tri_w = max(6, int(self._line_h * self._arrow_w_scale))
+        self.setFixedWidth(tri_w + 4)
+        self.setMinimumWidth(tri_w + 4)
+
+    def paintEvent(self, event):
+        if not self._arrows:
+            return
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        tri_w = max(6, int(self._line_h * self._arrow_w_scale))
+        # 三角形高度 = line_h 的 0.5 倍
+        tri_h = self._line_h * 0.5
+
+        for line_idx, direction, color_hex in self._arrows:
+            center_y = (self._offset_y + self._name_area_h +
+                       (5 - line_idx) * self._line_h + self._line_h // 2)
+            cy = center_y
+
+            p.setPen(Qt.PenStyle.NoPen)
+            p.setBrush(QColor(color_hex))
+
+            if direction == "right":
+                # 右箭头: 尖头向右 ▶
+                points = [
+                    QPointF(2, cy - tri_h / 2.0),
+                    QPointF(2, cy + tri_h / 2.0),
+                    QPointF(2 + tri_w, cy),
+                ]
+            else:
+                # 左箭头: 尖头向左 ◀
+                points = [
+                    QPointF(2 + tri_w, cy - tri_h / 2.0),
+                    QPointF(2 + tri_w, cy + tri_h / 2.0),
+                    QPointF(2, cy),
+                ]
+            p.drawPolygon(points)
+
+        p.end()
+
+
+# ═══════════════════════════════════════════════════════════════
 #  LiuyaoPanel — 六爻主面板
 # ═══════════════════════════════════════════════════════════════
 
@@ -411,6 +504,12 @@ class LiuyaoPanel(QWidget):
         self._fs_offset_dongyao = LiuyaoConfig.fs_offset_dongyao
         self._fs_offset_nayin = LiuyaoConfig.fs_offset_nayin
 
+        # ── 变卦配置 ──
+        self._gap_arrow_to_nayin = LiuyaoConfig.gap_arrow_to_nayin
+        self._gap_arrow_to_biangua = LiuyaoConfig.gap_arrow_to_biangua
+        self._arrow_width_scale = LiuyaoConfig.arrow_width_scale
+        self._gap_biangua_to_nayin = LiuyaoConfig.gap_biangua_to_nayin
+
         # ── 精简模式 ──
         self._compact = config_manager.get("general", "liuyao_compact")
         if self._compact is None:
@@ -440,6 +539,14 @@ class LiuyaoPanel(QWidget):
         self._dongyao_marker_w = 0
         self._zhushiyao_line: int = 0   # 0=未选择，1-6=初爻..上爻
         self._status_timer = None       # 状态栏恢复定时器（防堆积）
+
+        # ── 变卦 Widget 引用 ──
+        self._arrow_column = None       # _ArrowColumn
+        self._bian_drawer = None        # HexagramDrawer 变卦
+        self._bian_nayin_label = None   # _NayinLabel 变卦六亲
+        self._bian_type_bar = None      # _TypeBadgeBar 变卦类型标签
+        self._bian_info: dict | None = None  # 变卦计算结果缓存
+        self._bian_section: QWidget | None = None  # 变卦整体容器（含箭头+drawer+六亲）
 
         self._init_ui()
 
@@ -577,12 +684,68 @@ class LiuyaoPanel(QWidget):
         right_row.addWidget(self._nayin_label)
         right_vbox.addLayout(right_row)
 
+        # ── 变卦整体容器（含箭头+drawer+六亲，静卦时整体隐藏）──
+        self._bian_section = QWidget()
+        self._bian_section.setVisible(False)
+        bian_section_row = QHBoxLayout(self._bian_section)
+        bian_section_row.setContentsMargins(0, 0, 0, 0)
+        bian_section_row.setSpacing(0)
+
+        # 变卦 arrow column
+        self._arrow_column = _ArrowColumn()
+        self._arrow_column.configure(name_h, lh, offset_y=-name_h)
+        self._arrow_column.setFixedHeight(6 * lh)
+
+        # 变卦 drawer
+        self._bian_drawer = HexagramDrawer()
+        self._bian_drawer.set_custom_title(None)
+
+        # 变卦六亲标注
+        self._bian_nayin_label = _NayinLabel()
+        self._bian_nayin_label.configure(name_h, lh, offset_y=-name_h,
+                                          font_size=self._font_size)
+        self._bian_nayin_label.setFixedHeight(6 * lh)
+        self._bian_nayin_label.set_border_width(self._nayin_border_width)
+        self._bian_nayin_label.set_padding(self._nayin_padding)
+
+        # 变卦类型标签
+        self._bian_type_bar = _TypeBadgeBar()
+        self._bian_type_bar.set_padding(self._badge_padding)
+        self._bian_type_bar.setFixedHeight(name_h)
+
+        bian_badge_row = QHBoxLayout()
+        bian_badge_row.setContentsMargins(0, 0, 0, 0)
+        bian_badge_row.setSpacing(0)
+        bian_badge_row.addWidget(self._bian_type_bar)
+        bian_badge_row.addStretch()
+
+        # 变卦右列固定宽度容器
+        self._bian_right_container = QWidget()
+        self._bian_right_container.setFixedWidth(self._nayin_label._fixed_w)
+        bian_right_vbox = QVBoxLayout(self._bian_right_container)
+        bian_right_vbox.setContentsMargins(0, 0, 0, 0)
+        bian_right_vbox.setSpacing(0)
+        bian_right_vbox.addLayout(bian_badge_row)
+        bian_right_row = QHBoxLayout()
+        bian_right_row.setContentsMargins(0, 0, 0, 0)
+        bian_right_row.setSpacing(0)
+        bian_right_row.addWidget(self._bian_nayin_label)
+        bian_right_vbox.addLayout(bian_right_row)
+
+        # ── 变卦容器内布局 ──
+        bian_section_row.addSpacing(self._gap_arrow_to_nayin)
+        bian_section_row.addWidget(self._arrow_column)
+        bian_section_row.addSpacing(self._gap_arrow_to_biangua)
+        bian_section_row.addWidget(self._bian_drawer)
+        bian_section_row.addSpacing(self._gap_biangua_to_nayin)
+        bian_section_row.addWidget(self._bian_right_container)
+
         # ── 调试输出 ──
         print(f"[liuyao_panel] liushen_w={liushen_w} shiying_w={shiying_w} "
               f"left_w={left_w} dongyao_w={self._dongyao_marker_w} "
               f"nayin_w={self._nayin_label._fixed_w} right_w={right_total}", flush=True)
 
-        # ── 主卦行：固定宽度的左/右容器 + drawer，负间距叠加到卦图留白区 ──
+        # ── 主卦行：固定宽度的左/右容器 + drawer + 变卦区域 ──
         main_row = QHBoxLayout()
         main_row.setContentsMargins(self._gap_liuyao_left, 0, self._gap_liuyao_right, 0)
         main_row.setSpacing(0)
@@ -591,6 +754,7 @@ class LiuyaoPanel(QWidget):
         main_row.addWidget(self._drawer)
         main_row.addSpacing(g)
         main_row.addWidget(self._right_container)
+        main_row.addWidget(self._bian_section)
         main_row.addStretch()
         root.addLayout(main_row)
 
@@ -627,6 +791,8 @@ class LiuyaoPanel(QWidget):
             self._update_nayin_items(self._liuyao_result)
             self._update_fushen_items()
             self._update_container_widths()
+            # ── 变卦六亲同步刷新 ──
+            self._update_biangua_display()
 
     # ═══════════════════════════════════════════════════════════
     #  公共接口
@@ -654,6 +820,148 @@ class LiuyaoPanel(QWidget):
         self._update_container_widths()
         self._update_zhushi_markers()
         self._update_interpretation()
+        # ── 变卦刷新 ──
+        self._compute_biangua_info()
+        self._update_biangua_display()
+
+    # ═══════════════════════════════════════════════════════════════
+    #  变卦数据计算
+    # ═══════════════════════════════════════════════════════════════
+
+    def _compute_biangua_info(self):
+        """
+        计算变卦数据：binary翻转 → 卦名查找 → 纳甲 → 六亲(按本卦宫) → 箭头数据
+
+        变卦六亲按本卦宫五行计算（非变卦自身宫位），这是六爻纳甲的标准规则。
+        箭头方向：被动爻克/生 → 左箭头；其他 → 右箭头
+        箭头颜色：克=红，生=绿，比和=蓝
+        """
+        if not self._ben_data or not self._changing_lines:
+            self._bian_info = None
+            return
+
+        if not self._liuyao_result:
+            self._bian_info = None
+            return
+
+        ben_binary = self._ben_data.get("binary", "111111")
+        # 翻转动爻位得到变卦 binary
+        bian_chars = list(ben_binary)
+        for cl in self._changing_lines:
+            idx = cl - 1
+            bian_chars[idx] = "0" if ben_binary[idx] == "1" else "1"
+        bian_binary = "".join(bian_chars)
+
+        # 查变卦数据
+        load_all_gua()
+        bian_gua_data = BINARY_TO_GUA.get(bian_binary)
+        if not bian_gua_data:
+            self._bian_info = None
+            return
+
+        bian_name = bian_gua_data.get("full_name", "")
+        day_gan = self._current_ganzhi["day_gan"] if self._current_ganzhi else "甲"
+        bian_result = analyze_gua(bian_name, day_gan)
+        if "error" in bian_result:
+            self._bian_info = None
+            return
+
+        # 变卦六亲按本卦宫五行计算
+        ben_palace_wx = self._liuyao_result.get("palace_wuxing", "")
+        for line in bian_result["lines"]:
+            zhi = line["zhi"]
+            line["liuqin"] = get_liuqin(ben_palace_wx, zhi)
+
+        # 计算箭头数据
+        arrows = []
+        ben_lines = self._liuyao_result.get("lines", [])
+        bian_lines = bian_result.get("lines", [])
+        for cl in self._changing_lines:
+            idx = cl - 1
+            ben_wx = DIZHI_WUXING.get(ben_lines[idx]["zhi"], "")
+            bian_wx = DIZHI_WUXING.get(bian_lines[idx].get("zhi", ""), "")
+
+            if not ben_wx or not bian_wx:
+                continue
+
+            if ben_wx == bian_wx:
+                direction, color = "right", "#3498db"
+            elif WUXING_KE.get(ben_wx) == bian_wx:
+                # 本克变 → 变被动爻克 → 左
+                direction, color = "left", "#e74c3c"
+            elif WUXING_SHENG.get(ben_wx) == bian_wx:
+                # 本生变 → 变被动爻生 → 左
+                direction, color = "left", "#27ae60"
+            elif WUXING_KE.get(bian_wx) == ben_wx:
+                # 变克本 → 右
+                direction, color = "right", "#e74c3c"
+            elif WUXING_SHENG.get(bian_wx) == ben_wx:
+                # 变生本 → 右
+                direction, color = "right", "#27ae60"
+            else:
+                direction, color = "right", "#3498db"
+
+            arrows.append((idx, direction, color))
+
+        self._bian_info = {
+            "bian_name": bian_name,
+            "bian_binary": bian_binary,
+            "bian_result": bian_result,
+            "bian_gua_data": bian_gua_data,
+            "arrows": arrows,
+        }
+
+    def _update_biangua_display(self):
+        """根据 _bian_info 更新变卦相关所有 widget"""
+        if not self._bian_info:
+            # 无变卦（静卦）→ 隐藏整个变卦区域
+            if self._bian_section:
+                self._bian_section.setVisible(False)
+            return
+
+        bian_info = self._bian_info
+        bian_binary = bian_info["bian_binary"]
+        bian_result = bian_info["bian_result"]
+        bian_name = bian_info["bian_name"]
+
+        # 显示变卦区域
+        if self._bian_section:
+            self._bian_section.setVisible(True)
+
+        # 变卦 drawer
+        if self._bian_drawer:
+            yang = [c == "1" for c in bian_binary]
+            self._bian_drawer.set_lines(yang)
+            self._bian_drawer.set_disabled_look(False)
+            self._bian_drawer.set_custom_title(f"变·{bian_name}")
+
+        # 箭头
+        if self._arrow_column:
+            self._arrow_column.set_arrows(bian_info["arrows"])
+
+        # 变卦六亲
+        if self._bian_nayin_label:
+            lines = bian_result.get("lines", [])
+            items = []
+            for line in lines:
+                line_idx = line["position"] - 1
+                text = _format_nayin_text(line, self._compact)
+                zhi_wx = line.get("dizhi_wuxing", "")
+                border_color = get_wuxing_base_color(zhi_wx)
+                items.append((line_idx, text, border_color))
+            self._bian_nayin_label.set_items(items)
+
+        # 变卦类型标签
+        if self._bian_type_bar:
+            fy_result = check_hexagram_fanyin_fuyin(bian_name)
+            fanyin_type = fy_result.get("fanyin_type", "")
+            fuyin_type = fy_result.get("fuyin_type", "")
+            if fuyin_type and get_gua_type_tags(bian_name) == "冲":
+                fuyin_type = ""
+            badges = get_gua_type_badges(bian_name, fanyin_type, fuyin_type)
+            self._bian_type_bar.set_badges(badges, self._font_size)
+
+        self._update_container_widths()
 
     def set_gua_result(self, ben_data: dict, changing_lines: list[int],
                         bian_data: dict | None = None):
@@ -690,6 +998,9 @@ class LiuyaoPanel(QWidget):
         self._update_container_widths()
         self._update_zhushi_markers()
         self._update_interpretation()
+        # ── 变卦计算和显示 ──
+        self._compute_biangua_info()
+        self._update_biangua_display()
 
     def _update_interpretation(self):
         if not self._ben_data:
@@ -752,6 +1063,34 @@ class LiuyaoPanel(QWidget):
             self._nayin_label.set_border_width(self._nayin_border_width)
             self._nayin_label.set_padding(self._nayin_padding)
 
+        # ── 变卦 widgets 刷新 ──
+        if self._arrow_column:
+            self._arrow_column.configure(name_h, lh, offset_y=-name_h)
+            self._arrow_column.setFixedHeight(6 * lh)
+
+        if self._bian_drawer:
+            self._bian_drawer.set_font_size(font_size)
+            self._bian_drawer.set_name_fs(self._fs_name)
+
+        if self._bian_nayin_label:
+            self._bian_nayin_label.configure(name_h, lh, offset_y=-name_h,
+                                              font_size=font_size)
+            self._bian_nayin_label.setFixedHeight(6 * lh)
+            self._bian_nayin_label.set_border_width(self._nayin_border_width)
+            self._bian_nayin_label.set_padding(self._nayin_padding)
+
+        if self._bian_type_bar and self._bian_info:
+            self._bian_type_bar.set_padding(self._badge_padding)
+            bian_name = self._bian_info.get("bian_name", "")
+            if bian_name:
+                fy_result = check_hexagram_fanyin_fuyin(bian_name)
+                fanyin_type = fy_result.get("fanyin_type", "")
+                fuyin_type = fy_result.get("fuyin_type", "")
+                if fuyin_type and get_gua_type_tags(bian_name) == "冲":
+                    fuyin_type = ""
+                badges = get_gua_type_badges(bian_name, fanyin_type, fuyin_type)
+                self._bian_type_bar.set_badges(badges, font_size)
+
         if self._type_badge_bar and self._ben_data:
             self._type_badge_bar.set_padding(self._badge_padding)
             gua_name = self._ben_data.get("full_name", "")
@@ -793,11 +1132,15 @@ class LiuyaoPanel(QWidget):
         self._text_color = text_color
         if self._drawer:
             self._drawer.set_text_color(text_color)
+        if self._bian_drawer:
+            self._bian_drawer.set_text_color(text_color)
         for m in [self._liushen_marker, self._shiying_marker, self._dongyao_marker]:
             if m:
                 m.set_text_color(text_color)
         if self._nayin_label:
             self._nayin_label.set_text_color(text_color)
+        if self._bian_nayin_label:
+            self._bian_nayin_label.set_text_color(text_color)
         if self._liuyao_result:
             self._update_liushen_markers(self._liuyao_result)
             self._update_fushen_items()
@@ -806,6 +1149,8 @@ class LiuyaoPanel(QWidget):
         self._fs_name = offset
         if self._drawer:
             self._drawer.set_name_fs(offset)
+        if self._bian_drawer:
+            self._bian_drawer.set_name_fs(offset)
 
     # ═══════════════════════════════════════════════════════════
     #  最小宽度
@@ -820,8 +1165,18 @@ class LiuyaoPanel(QWidget):
                   self._shiying_marker_w)
         right_w = (self._dongyao_marker_w + self._gap_dongyao_to_nayin + nayin_w)
 
+        # 变卦区域宽度
+        arrow_w = (self._arrow_column.width() if self._arrow_column
+                   else max(6, int(40 * self._arrow_width_scale)))
+        bian_dw = self._bian_drawer.minimumWidth() if self._bian_drawer else 90
+        bian_nayin_w = self._bian_nayin_label._fixed_w if self._bian_nayin_label else 80
+
+        bian_total = (self._gap_arrow_to_nayin + arrow_w +
+                      self._gap_arrow_to_biangua + bian_dw +
+                      self._gap_biangua_to_nayin + bian_nayin_w)
+
         return (self._gap_liuyao_left + left_w + g + dw + g + right_w +
-                self._gap_liuyao_right)
+                bian_total + self._gap_liuyao_right)
 
     # ═══════════════════════════════════════════════════════════
     #  configure
@@ -840,7 +1195,11 @@ class LiuyaoPanel(QWidget):
                   fs_offset_liushen: int | None = None,
                   fs_offset_shiying: int | None = None,
                   fs_offset_dongyao: int | None = None,
-                  fs_offset_nayin: int | None = None):
+                  fs_offset_nayin: int | None = None,
+                  gap_arrow_to_nayin: int | None = None,
+                  gap_arrow_to_biangua: int | None = None,
+                  arrow_width_scale: float | None = None,
+                  gap_biangua_to_nayin: int | None = None):
         if gap_liuyao_left is not None:
             self._gap_liuyao_left = gap_liuyao_left
         if gap_liuyao_right is not None:
@@ -859,10 +1218,14 @@ class LiuyaoPanel(QWidget):
             self._nayin_border_width = nayin_border_width
             if self._nayin_label:
                 self._nayin_label.set_border_width(nayin_border_width)
+            if self._bian_nayin_label:
+                self._bian_nayin_label.set_border_width(nayin_border_width)
         if nayin_padding is not None:
             self._nayin_padding = nayin_padding
             if self._nayin_label:
                 self._nayin_label.set_padding(nayin_padding)
+            if self._bian_nayin_label:
+                self._bian_nayin_label.set_padding(nayin_padding)
         if fs_offset_liushen is not None:
             self._fs_offset_liushen = fs_offset_liushen
         if fs_offset_shiying is not None:
@@ -871,6 +1234,18 @@ class LiuyaoPanel(QWidget):
             self._fs_offset_dongyao = fs_offset_dongyao
         if fs_offset_nayin is not None:
             self._fs_offset_nayin = fs_offset_nayin
+
+        # ── 变卦参数 ──
+        if gap_arrow_to_nayin is not None:
+            self._gap_arrow_to_nayin = gap_arrow_to_nayin
+        if gap_arrow_to_biangua is not None:
+            self._gap_arrow_to_biangua = gap_arrow_to_biangua
+        if arrow_width_scale is not None:
+            self._arrow_width_scale = arrow_width_scale
+            if self._arrow_column:
+                self._arrow_column.set_arrow_width_scale(arrow_width_scale)
+        if gap_biangua_to_nayin is not None:
+            self._gap_biangua_to_nayin = gap_biangua_to_nayin
 
         self._recalc_all_marker_widths()
 
@@ -980,6 +1355,18 @@ class LiuyaoPanel(QWidget):
         if self._drawer:
             self._drawer.set_fushen_texts(texts, font_size_offset=-5,
                                           color=self._text_color, bold=True)
+        self._update_fushen_highlight()
+
+    def _update_fushen_highlight(self):
+        """根据主事爻和伏神数据，设置 drawer 的伏神高亮行"""
+        if not self._drawer:
+            return
+        if self._zhushiyao_line and self._fushen_data:
+            pos = self._zhushiyao_line - 1
+            if 0 <= pos < 6 and self._fushen_data[pos] is not None:
+                self._drawer.set_fushen_highlight(pos)
+                return
+        self._drawer.set_fushen_highlight(None)
 
     def _update_type_badges(self, gua_name: str):
         """更新卦类型标签方块（冲/合/游/归/反/伏）— 基于单卦内部结构，不依赖变卦/动爻"""
@@ -1025,6 +1412,7 @@ class LiuyaoPanel(QWidget):
             else:
                 self._zhushiyao_line = new_val
             self._update_zhushi_markers()
+            self._update_fushen_highlight()
             self._update_container_widths()
             self._show_zhushiyao_status()
 
@@ -1117,7 +1505,7 @@ class LiuyaoPanel(QWidget):
             self._dongyao_marker.setFixedWidth(w)
 
     def _update_container_widths(self):
-        """更新左/右固定宽度容器的尺寸（字号/内容变更后调用）"""
+        """更新左/右/变卦 固定宽度容器的尺寸（字号/内容变更后调用）"""
         left_total = (self._liushen_marker_w + self._gap_liushen_to_shiying +
                       self._shiying_marker_w)
         if self._compact_btn:
@@ -1133,3 +1521,7 @@ class LiuyaoPanel(QWidget):
             nayin_w = self._nayin_label._fixed_w if self._nayin_label else 80
             right_total = self._dongyao_marker_w + self._gap_dongyao_to_nayin + nayin_w
             self._right_container.setFixedWidth(right_total)
+
+        if hasattr(self, '_bian_right_container') and self._bian_right_container:
+            bian_nayin_w = self._bian_nayin_label._fixed_w if self._bian_nayin_label else 80
+            self._bian_right_container.setFixedWidth(bian_nayin_w)

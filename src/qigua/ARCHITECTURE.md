@@ -431,6 +431,7 @@ Lock 和 单动爻 在同一列 (col2)，天然水平对齐。所有字号 (15-1
 - 同一卦动爻变更时保留选择，换卦时重置
 - 颜色常量放文件顶部（import 后第 3 行），方便快速修改
 - QTimer 防堆积：用 `QTimer` 对象（`setSingleShot(True)`），每次点击先 `stop()`+`deleteLater()` 再创建新的
+- 主事爻伏神高亮：`hexagram_drawer.py` 新增 `set_fushen_highlight(line_idx)`，在 paintEvent 伏神循环中逐行检测 `_fushen_highlight_line`，高亮行使用放大字体（+2pt）并加粗，位置对齐爻线边缘（⬇️初爻上方：文字底部对齐爻线顶部；⬆️其他爻下方：文字顶部对齐爻线底部）。`liuyao_panel.py` 通过 `_update_fushen_highlight()` 辅助方法联动，取消选择时传 `None` 恢复默认
 
 ### Qt eventFilter 双击问题（2026-06-09）
 

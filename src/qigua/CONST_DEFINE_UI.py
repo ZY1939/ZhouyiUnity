@@ -174,3 +174,13 @@ class LiuyaoConfig:
     fs_offset_dongyao = 0
     # 纳音字号偏移
     fs_offset_nayin = 0
+
+    # === 变卦相关 ===
+    # 箭头到本卦纳音的距离（px）
+    gap_arrow_to_nayin = 4
+    # 箭头到变卦drawer的距离（px）
+    gap_arrow_to_biangua = 4
+    # 箭头宽度比例（相对 line_h，默认 0.55 = line_h 的 55%）
+    arrow_width_scale = 0.55
+    # 变卦drawer到变卦六亲的距离（px）
+    gap_biangua_to_nayin = 4

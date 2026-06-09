@@ -252,6 +252,8 @@ class HexagramDrawer(QWidget):
         self._fushen_fs_offset = -4
         self._fushen_color = "#999999"
         self._fushen_bold = True
+        self._fushen_highlight_line: int | None = None  # 高亮行索引（0=初爻..5=上爻），None=不高亮
+        self._fushen_highlight_shift = 4  # 高亮行垂直偏移（px），正=远离爻线
 
         # ── 绘制参数（由 QFontMetrics 精确计算） ──
         # 获取当前应用字体作为基准，后续 set_font_size() 只改字号不改 family
@@ -564,6 +566,16 @@ class HexagramDrawer(QWidget):
         self._fushen_bold = bold
         self.update()
 
+    def set_fushen_highlight(self, line_idx: int | None):
+        """
+        设置伏神高亮行（主事爻对应伏神放大加粗贴近爻线）
+
+        Args:
+            line_idx: 0=初爻..5=上爻, None=取消高亮
+        """
+        self._fushen_highlight_line = line_idx
+        self.update()
+
     def set_lines(self, yang_lines: list[bool]):
         """
         设置 6 爻阴阳状态（从下而上 [初..上]）
@@ -784,20 +796,42 @@ class HexagramDrawer(QWidget):
             fs_font = _app_font()
             fs_font.setPointSize(max(8, self._font_size + self._fushen_fs_offset))
             fs_font.setBold(self._fushen_bold)
-            p.setFont(fs_font)
             fm = QFontMetrics(fs_font)
+            # 高亮字体（+2pt，加粗）
+            hl_font = None
+            hl_fm = None
+            if self._fushen_highlight_line is not None:
+                hl_font = _app_font()
+                hl_font.setPointSize(max(9, self._font_size + self._fushen_fs_offset + 2))
+                hl_font.setBold(True)
+                hl_fm = QFontMetrics(hl_font)
             p.setPen(QColor(self._fushen_color))
             for i in range(6):
                 txt = self._fushen_texts[i]
                 if not txt:
                     continue
                 bar_center_y = offset + name_h + (5 - i) * line_h + line_h // 2
-                if i == 0:
-                    fushen_y = bar_center_y - line_h // 2  # 初爻：爻线上方
+                bar_h = self._bar_h
+                is_hl = (i == self._fushen_highlight_line) and hl_font is not None
+                if is_hl:
+                    p.setFont(hl_font)
+                    cur_fm = hl_fm
+                    if i == 0:
+                        # ⬇️ 初爻上方：文字底部对齐爻线顶部
+                        draw_y = bar_center_y - bar_h // 2 - cur_fm.descent()
+                    else:
+                        # ⬆️ 其他爻下方：文字顶部对齐爻线底部
+                        draw_y = bar_center_y + bar_h // 2 + cur_fm.ascent()
                 else:
-                    fushen_y = bar_center_y + line_h // 2  # 其他爻：爻线下方
-                tw = fm.horizontalAdvance(txt)
-                p.drawText(int(cx - tw // 2), int(fushen_y + fm.ascent() // 2), txt)
+                    p.setFont(fs_font)
+                    cur_fm = fm
+                    if i == 0:
+                        fushen_y = bar_center_y - line_h // 2
+                    else:
+                        fushen_y = bar_center_y + line_h // 2
+                    draw_y = fushen_y + cur_fm.ascent() // 2
+                tw = cur_fm.horizontalAdvance(txt)
+                p.drawText(int(cx - tw // 2), int(draw_y), txt)
 
         p.end()
 
