@@ -176,11 +176,13 @@ class LiuyaoConfig:
     fs_offset_nayin = 0
 
     # === 变卦相关 ===
-    # 箭头到本卦纳音的距离（px）
-    gap_arrow_to_nayin = 4
-    # 箭头到变卦drawer的距离（px）
-    gap_arrow_to_biangua = 4
     # 箭头宽度比例（相对 line_h，默认 0.55 = line_h 的 55%）
     arrow_width_scale = 0.55
-    # 变卦drawer到变卦六亲的距离（px）
-    gap_biangua_to_nayin = 4
+    # 箭头及生克文字的间距统一复用 gap_liushen_to_shiying
+
+    # === 动爻生克箭头/文字颜色 ===
+    arrow_color_he = "#8e44ad"      # 比和（紫色）
+    arrow_color_ke = "#e74c3c"      # 克（红色）
+    arrow_color_sheng = "#27ae60"   # 生（绿色）
+    # 生克文字 badge 内边距（px），badge = 正方形 (side = fm_height + 2 * padding)
+    arrow_badge_padding = 1

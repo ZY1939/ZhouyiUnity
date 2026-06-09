@@ -21,7 +21,7 @@ import datetime
 
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
                                 QLabel, QFrame, QApplication)
-from PySide6.QtCore import Qt, QTimer, QEvent, QPointF
+from PySide6.QtCore import Qt, QTimer, QEvent, QPointF, QRectF
 from PySide6.QtGui import QFontMetrics, QColor, QPen, QPainter
 
 from ..hexagram_drawer import HexagramDrawer, _app_font
@@ -387,24 +387,31 @@ class _TypeBadgeBar(QWidget):
 
 class _ArrowColumn(QWidget):
     """
-    在每爻动爻位置绘制箭头，连接本卦六亲和变卦
+    在每爻动爻位置绘制箭头 + 生克 badge（圆角矩形白字彩色底），连接本卦六亲和变卦
 
-    被动爻克/生 → 左箭头（←），其他 → 右箭头（→）
-    克=红色填充，生=绿色填充，比和=蓝色
+    变克/生本 → 左箭头（←），本克/生变 → 右箭头（→），比和 → 双箭头（↔）
+    克=红色，生=绿色，比和=紫色
     """
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._arrows: list[tuple[int, str, str]] = []  # [(line_idx, direction, color), ...]
+        self._arrows: list[tuple[int, str, str, str]] = []  # [(line_idx, direction, color, label), ...]
         self._name_area_h = 0
         self._line_h = 0
         self._offset_y = 0
         self._arrow_w_scale = LiuyaoConfig.arrow_width_scale
+        self._label_gap = 2
+        self._badge_padding = 1
+        self._font_size = 16
 
-    def configure(self, name_area_h: int, line_h: int, offset_y: int = 0):
+    def configure(self, name_area_h: int, line_h: int, offset_y: int = 0,
+                  label_gap: int = 2, font_size: int = 16, badge_padding: int = 1):
         self._name_area_h = name_area_h
         self._line_h = line_h
         self._offset_y = offset_y
+        self._label_gap = label_gap
+        self._font_size = font_size
+        self._badge_padding = badge_padding
         self.setFixedHeight(name_area_h + 6 * line_h)
         self._update_width()
 
@@ -413,24 +420,36 @@ class _ArrowColumn(QWidget):
         self._update_width()
         self.update()
 
-    def set_arrows(self, arrows: list[tuple[int, str, str]]):
+    def set_arrows(self, arrows: list[tuple[int, str, str, str]]):
         """
         设置箭头数据
 
         Args:
-            arrows: [(line_idx, direction, color), ...]
+            arrows: [(line_idx, direction, color, label), ...]
                     line_idx: 0=初爻..5=上爻
                     direction: "left" 或 "right"
-                    color: hex 颜色字符串
+                    color: hex 颜色字符串（箭头/badge 共用）
+                    label: "生"/"克"/"和"
         """
         self._arrows = arrows
+        self._update_width()
         self.update()
 
+    def _badge_side(self) -> int:
+        """badge 正方形边长 = fm 高度 + 2 * 内边距"""
+        font = _app_font()
+        font.setPointSize(self._font_size)
+        font.setBold(True)
+        fm = QFontMetrics(font)
+        return int(fm.height() + 2 * self._badge_padding)
+
     def _update_width(self):
-        """箭头宽 = line_h * arrow_width_scale，确保最小宽度"""
+        """宽度 = 三角 + 间距 + badge正方形 + 留白"""
         tri_w = max(6, int(self._line_h * self._arrow_w_scale))
-        self.setFixedWidth(tri_w + 4)
-        self.setMinimumWidth(tri_w + 4)
+        badge_w = self._badge_side()
+        total = int(2 + tri_w + self._label_gap + badge_w + 2)
+        self.setFixedWidth(total)
+        self.setMinimumWidth(total)
 
     def paintEvent(self, event):
         if not self._arrows:
@@ -439,32 +458,65 @@ class _ArrowColumn(QWidget):
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
 
         tri_w = max(6, int(self._line_h * self._arrow_w_scale))
-        # 三角形高度 = line_h 的 0.5 倍
         tri_h = self._line_h * 0.5
 
-        for line_idx, direction, color_hex in self._arrows:
+        font = _app_font()
+        font.setPointSize(self._font_size)
+        font.setBold(True)
+        p.setFont(font)
+
+        badge_side = self._badge_side()
+        tri_left = 2
+        tri_right = tri_left + tri_w
+        badge_x = tri_right + self._label_gap
+        corner_r = max(2, badge_side // 5)
+
+        for line_idx, direction, color_hex, label in self._arrows:
             center_y = (self._offset_y + self._name_area_h +
                        (5 - line_idx) * self._line_h + self._line_h // 2)
             cy = center_y
 
+            # ── 画箭头 ──
             p.setPen(Qt.PenStyle.NoPen)
             p.setBrush(QColor(color_hex))
-
-            if direction == "right":
-                # 右箭头: 尖头向右 ▶
+            if direction == "both":
+                # 双箭头 ↔：杆 + 左右两个三角
+                shaft_h = tri_h * 0.35
+                p.drawRect(QRectF(tri_left, cy - shaft_h / 2.0,
+                                  tri_right - tri_left, shaft_h))
+                pts_r = [QPointF(tri_right - tri_h * 0.55, cy - tri_h / 2.0),
+                         QPointF(tri_right - tri_h * 0.55, cy + tri_h / 2.0),
+                         QPointF(tri_right, cy)]
+                pts_l = [QPointF(tri_left + tri_h * 0.55, cy - tri_h / 2.0),
+                         QPointF(tri_left + tri_h * 0.55, cy + tri_h / 2.0),
+                         QPointF(tri_left, cy)]
+                p.drawPolygon(pts_r)
+                p.drawPolygon(pts_l)
+            elif direction == "right":
                 points = [
-                    QPointF(2, cy - tri_h / 2.0),
-                    QPointF(2, cy + tri_h / 2.0),
-                    QPointF(2 + tri_w, cy),
+                    QPointF(tri_left, cy - tri_h / 2.0),
+                    QPointF(tri_left, cy + tri_h / 2.0),
+                    QPointF(tri_right, cy),
                 ]
+                p.drawPolygon(points)
             else:
-                # 左箭头: 尖头向左 ◀
                 points = [
-                    QPointF(2 + tri_w, cy - tri_h / 2.0),
-                    QPointF(2 + tri_w, cy + tri_h / 2.0),
-                    QPointF(2, cy),
+                    QPointF(tri_right, cy - tri_h / 2.0),
+                    QPointF(tri_right, cy + tri_h / 2.0),
+                    QPointF(tri_left, cy),
                 ]
-            p.drawPolygon(points)
+                p.drawPolygon(points)
+
+            # ── 画生克 badge（圆角矩形 + 白色文字）──
+            badge_top = int(cy - badge_side / 2.0)
+            p.setPen(Qt.PenStyle.NoPen)
+            p.setBrush(QColor(color_hex))
+            p.drawRoundedRect(int(badge_x), badge_top, badge_side, badge_side,
+                            corner_r, corner_r)
+
+            p.setPen(QColor("#ffffff"))
+            p.drawText(int(badge_x), badge_top, badge_side, badge_side,
+                       Qt.AlignmentFlag.AlignCenter, label)
 
         p.end()
 
@@ -505,10 +557,11 @@ class LiuyaoPanel(QWidget):
         self._fs_offset_nayin = LiuyaoConfig.fs_offset_nayin
 
         # ── 变卦配置 ──
-        self._gap_arrow_to_nayin = LiuyaoConfig.gap_arrow_to_nayin
-        self._gap_arrow_to_biangua = LiuyaoConfig.gap_arrow_to_biangua
         self._arrow_width_scale = LiuyaoConfig.arrow_width_scale
-        self._gap_biangua_to_nayin = LiuyaoConfig.gap_biangua_to_nayin
+        self._arrow_color_he = LiuyaoConfig.arrow_color_he
+        self._arrow_color_ke = LiuyaoConfig.arrow_color_ke
+        self._arrow_color_sheng = LiuyaoConfig.arrow_color_sheng
+        self._arrow_badge_padding = LiuyaoConfig.arrow_badge_padding
 
         # ── 精简模式 ──
         self._compact = config_manager.get("general", "liuyao_compact")
@@ -691,10 +744,12 @@ class LiuyaoPanel(QWidget):
         bian_section_row.setContentsMargins(0, 0, 0, 0)
         bian_section_row.setSpacing(0)
 
-        # 变卦 arrow column
+        # 变卦 arrow column（高度 = name_h + 6*lh，offset_y=0 直接对齐 drawer 顶部）
         self._arrow_column = _ArrowColumn()
-        self._arrow_column.configure(name_h, lh, offset_y=-name_h)
-        self._arrow_column.setFixedHeight(6 * lh)
+        self._arrow_column.configure(name_h, lh, offset_y=0,
+                                     label_gap=self._gap_liushen_to_shiying,
+                                     font_size=self._font_size,
+                                     badge_padding=self._arrow_badge_padding)
 
         # 变卦 drawer
         self._bian_drawer = HexagramDrawer()
@@ -732,12 +787,13 @@ class LiuyaoPanel(QWidget):
         bian_right_row.addWidget(self._bian_nayin_label)
         bian_right_vbox.addLayout(bian_right_row)
 
-        # ── 变卦容器内布局 ──
-        bian_section_row.addSpacing(self._gap_arrow_to_nayin)
+        # ── 变卦容器内布局（间距统一使用 _gap_liushen_to_shiying）──
+        arrow_gap = self._gap_liushen_to_shiying
+        bian_section_row.addSpacing(arrow_gap)
         bian_section_row.addWidget(self._arrow_column)
-        bian_section_row.addSpacing(self._gap_arrow_to_biangua)
+        bian_section_row.addSpacing(arrow_gap)
         bian_section_row.addWidget(self._bian_drawer)
-        bian_section_row.addSpacing(self._gap_biangua_to_nayin)
+        bian_section_row.addSpacing(arrow_gap)
         bian_section_row.addWidget(self._bian_right_container)
 
         # ── 调试输出 ──
@@ -872,7 +928,7 @@ class LiuyaoPanel(QWidget):
             zhi = line["zhi"]
             line["liuqin"] = get_liuqin(ben_palace_wx, zhi)
 
-        # 计算箭头数据
+        # 计算箭头数据（颜色来自 LiuyaoConfig）
         arrows = []
         ben_lines = self._liuyao_result.get("lines", [])
         bian_lines = bian_result.get("lines", [])
@@ -885,23 +941,19 @@ class LiuyaoPanel(QWidget):
                 continue
 
             if ben_wx == bian_wx:
-                direction, color = "right", "#3498db"
-            elif WUXING_KE.get(ben_wx) == bian_wx:
-                # 本克变 → 变被动爻克 → 左
-                direction, color = "left", "#e74c3c"
-            elif WUXING_SHENG.get(ben_wx) == bian_wx:
-                # 本生变 → 变被动爻生 → 左
-                direction, color = "left", "#27ae60"
+                direction, color, label = "both", self._arrow_color_he, "和"
             elif WUXING_KE.get(bian_wx) == ben_wx:
-                # 变克本 → 右
-                direction, color = "right", "#e74c3c"
+                direction, color, label = "left", self._arrow_color_ke, "克"
             elif WUXING_SHENG.get(bian_wx) == ben_wx:
-                # 变生本 → 右
-                direction, color = "right", "#27ae60"
+                direction, color, label = "left", self._arrow_color_sheng, "生"
+            elif WUXING_KE.get(ben_wx) == bian_wx:
+                direction, color, label = "right", self._arrow_color_ke, "克"
+            elif WUXING_SHENG.get(ben_wx) == bian_wx:
+                direction, color, label = "right", self._arrow_color_sheng, "生"
             else:
-                direction, color = "right", "#3498db"
+                direction, color, label = "both", self._arrow_color_he, "和"
 
-            arrows.append((idx, direction, color))
+            arrows.append((idx, direction, color, label))
 
         self._bian_info = {
             "bian_name": bian_name,
@@ -1065,8 +1117,10 @@ class LiuyaoPanel(QWidget):
 
         # ── 变卦 widgets 刷新 ──
         if self._arrow_column:
-            self._arrow_column.configure(name_h, lh, offset_y=-name_h)
-            self._arrow_column.setFixedHeight(6 * lh)
+            self._arrow_column.configure(name_h, lh, offset_y=0,
+                                         label_gap=self._gap_liushen_to_shiying,
+                                         font_size=font_size,
+                                         badge_padding=self._arrow_badge_padding)
 
         if self._bian_drawer:
             self._bian_drawer.set_font_size(font_size)
@@ -1171,9 +1225,8 @@ class LiuyaoPanel(QWidget):
         bian_dw = self._bian_drawer.minimumWidth() if self._bian_drawer else 90
         bian_nayin_w = self._bian_nayin_label._fixed_w if self._bian_nayin_label else 80
 
-        bian_total = (self._gap_arrow_to_nayin + arrow_w +
-                      self._gap_arrow_to_biangua + bian_dw +
-                      self._gap_biangua_to_nayin + bian_nayin_w)
+        g = self._gap_liushen_to_shiying
+        bian_total = g + arrow_w + g + bian_dw + g + bian_nayin_w
 
         return (self._gap_liuyao_left + left_w + g + dw + g + right_w +
                 bian_total + self._gap_liuyao_right)
@@ -1196,10 +1249,8 @@ class LiuyaoPanel(QWidget):
                   fs_offset_shiying: int | None = None,
                   fs_offset_dongyao: int | None = None,
                   fs_offset_nayin: int | None = None,
-                  gap_arrow_to_nayin: int | None = None,
-                  gap_arrow_to_biangua: int | None = None,
                   arrow_width_scale: float | None = None,
-                  gap_biangua_to_nayin: int | None = None):
+                  arrow_badge_padding: int | None = None):
         if gap_liuyao_left is not None:
             self._gap_liuyao_left = gap_liuyao_left
         if gap_liuyao_right is not None:
@@ -1236,16 +1287,12 @@ class LiuyaoPanel(QWidget):
             self._fs_offset_nayin = fs_offset_nayin
 
         # ── 变卦参数 ──
-        if gap_arrow_to_nayin is not None:
-            self._gap_arrow_to_nayin = gap_arrow_to_nayin
-        if gap_arrow_to_biangua is not None:
-            self._gap_arrow_to_biangua = gap_arrow_to_biangua
         if arrow_width_scale is not None:
             self._arrow_width_scale = arrow_width_scale
             if self._arrow_column:
                 self._arrow_column.set_arrow_width_scale(arrow_width_scale)
-        if gap_biangua_to_nayin is not None:
-            self._gap_biangua_to_nayin = gap_biangua_to_nayin
+        if arrow_badge_padding is not None:
+            self._arrow_badge_padding = arrow_badge_padding
 
         self._recalc_all_marker_widths()
 

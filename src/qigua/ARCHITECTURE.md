@@ -438,3 +438,76 @@ Lock 和 单动爻 在同一列 (col2)，天然水平对齐。所有字号 (15-1
 - **现象**：快速连续点击时第二下无反应
 - **根因**：Qt 将快速双击识别为 `MouseButtonDblClick` 事件，而非 `MouseButtonPress`。只匹配 Press 的 eventFilter 会漏掉第二下
 - **修复**：`event.type() in (QEvent.Type.MouseButtonPress, QEvent.Type.MouseButtonDblClick)`
+
+### 六爻变卦功能（2026-06-09 新增）
+
+#### 变卦整体布局
+
+```
+[本卦六亲] [箭头+生克badge] [变卦drawer] [变卦六亲] [变卦类型badge]
+ 妻财子水      ← 克            ████        子孙丑土        [冲]
+ 官鬼戌土                     ████        官鬼辰土
+ ...
+```
+
+- 变卦区域整体包在 `_bian_section`（QWidget）中，静卦（0动爻）时整体 `setVisible(False)`，避免内部 spacing 占据布局空间
+- 每部分用**固定宽度容器**（`setFixedWidth`）包裹，防止 QHBoxLayout 拉伸破坏间距
+
+#### 变卦六亲计算规则
+
+- **变卦六亲按本卦宫五行计算**，不是变卦自身宫位（六爻纳甲标准规则）
+- 例如：火风鼎（离宫火）→ 山风蛊，四爻酉金按离宫火（非巽宫木）算六亲
+- 实现：`get_liuqin(ben_palace_wx, zhi)` 用本卦宫五行覆盖变卦 `analyze_gua` 的六亲结果
+
+#### 箭头垂直对齐（重要踩坑）
+
+- **现象**：箭头三角形的垂直位置与爻线不对齐，偏移约 `name_h` 像素
+- **根因**：`_ArrowColumn` 直接放在 QHBoxLayout 中，与 drawer 顶部平齐。但使用了 `offset_y=-name_h`（照搬 `_LineMarker` 的配置）。`_LineMarker` 上方有 `name_h` 高的 button wrapper（VBox 中），所以需要 `-name_h` 补偿；而 `_ArrowColumn` 上方无任何 header，`offset_y` 应为 **0**
+- **正确公式**：`center_y = 0 + name_area_h + (5 - line_idx) * line_h + line_h // 2`
+  - 即 `center_y = name_h + (5 - line_idx) * line_h + line_h // 2`
+  - 因为 widget 顶部 = drawer 顶部（name area top），yao 从 name_h 下方开始
+- **修复**：`_ArrowColumn.configure(offset_y=0)`，高度保持 `name_h + 6*lh`
+- **教训**：`offset_y` 的值取决于 widget 在布局中的**垂直起始位置**。如果 widget 上方有 header，需要补偿；如果直接与 drawer 顶部对齐，offset=0
+
+#### 箭头方向规则
+
+箭头指向**受作用方**（被克/被生的一方）：
+
+| 关系 | 方向 | 图示 |
+|------|------|------|
+| 变克本 | left | ◀ 指向本卦 |
+| 变生本 | left | ◀ 指向本卦 |
+| 本克变 | right | ▶ 指向变卦 |
+| 本生变 | right | ▶ 指向变卦 |
+| 比和 | both | ↔ 双箭头 |
+
+- **双箭头（both）**：横杆 + 左右两个三角箭头，专用于比和
+- 实现：`_ArrowColumn.paintEvent` 中 `direction == "both"` 分支 → `drawRect`(杆) + 两组 `drawPolygon`(左右三角)
+
+#### 生克 Badge 渲染
+
+- 箭头右侧的生/克/和文字使用**圆角正方形 badge**（与六神/世应 badge 风格一致）
+- 彩色填充底 + 白色居中文字（`#ffffff`）
+- Badge 边长 = `fm.height() + 2 * arrow_badge_padding`（默认 padding=1px）
+- 圆角半径 = `max(2, badge_side // 5)`
+- 绘制：`drawRoundedRect`(填充) + `drawText`(AlignCenter 白字)
+
+#### 间距统一
+
+变卦区域所有间距复用 `gap_liushen_to_shiying`（默认 4px）：
+- 本卦六亲 → 箭头列
+- 箭头列 → 变卦 drawer
+- 变卦 drawer → 变卦六亲
+
+不再使用独立的 `gap_arrow_to_nayin` / `gap_arrow_to_biangua` / `gap_biangua_to_nayin`。
+
+#### 生克颜色配置
+
+集中在 `CONST_DEFINE_UI.py` → `LiuyaoConfig`：
+
+| 常量 | 颜色 | 含义 |
+|------|------|------|
+| `arrow_color_he` | `#8e44ad` (紫) | 比和 |
+| `arrow_color_ke` | `#e74c3c` (红) | 克 |
+| `arrow_color_sheng` | `#27ae60` (绿) | 生 |
+| `arrow_badge_padding` | 1 | badge 内边距 px |
