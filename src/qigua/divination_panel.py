@@ -1776,6 +1776,26 @@ class QiguaPanel(QWidget):
         # ── 第5步：持久化当前方法到 usrCfg ──
         config_manager.set("general", "qigua_method", value=key)
 
+        # ── 第6步：按起卦方法自动切换算卦方法 + 状态栏 Info ──
+        if hasattr(self, "_suangua_panel") and self._suangua_panel is not None:
+            single_mode = hasattr(self, "_single_line_cb") and self._single_line_cb.isChecked()
+            mgr = getattr(self.window(), "_statusbar_mgr", None)
+            if key in ("coin", "yarrow") and not single_mode:
+                self._suangua_panel.switch_method("liuyao")
+                label = METHODS[next(i for i, m in enumerate(METHODS) if m["key"] == key)]["label"]
+                if mgr:
+                    mgr.show_status(f'<span style="color:#007aff;">[Info] {label}起卦，切换为六爻</span>')
+                    QTimer.singleShot(5000, mgr.reset_status)
+            elif key == "three":
+                self._suangua_panel.switch_method("meihua")
+                if mgr:
+                    mgr.show_status('<span style="color:#007aff;">[Info] 报数起卦，切换为梅花</span>')
+                    QTimer.singleShot(5000, mgr.reset_status)
+            elif key == "manual":
+                if mgr:
+                    mgr.show_status('<span style="color:#007aff;">[Info] 手动指定起卦</span>')
+                    QTimer.singleShot(5000, mgr.reset_status)
+
     # ═══════════════════════════════════════════════════════════
     #  字体大小响应（刷新链入口）
     # ═══════════════════════════════════════════════════════════
@@ -2746,7 +2766,8 @@ class QiguaPanel(QWidget):
 
         # 转发起卦结果到算卦面板
         if hasattr(self, "_suangua_panel") and self._suangua_panel is not None and ben:
-            self._suangua_panel.set_gua_result(ben, list(result.changing_lines))
+            self._suangua_panel.set_gua_result(ben, list(result.changing_lines), bian)
+
             _check(self._suangua_panel._gua_result is not None, "suangua 未收到卦数据")
             _check(self._suangua_panel._gua_result.get("full_name") == ben.get("full_name"),
                    f"suangua 卦名不匹配: {self._suangua_panel._gua_result.get('full_name')} != {ben.get('full_name')}")

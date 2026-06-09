@@ -23,7 +23,7 @@ from ..hexagram_loader import get_gua_by_xiantian
 from ..hexagram_calc import _yang_to_xiantian
 from ..bagua import XIANTIAN
 from ..CONST_DEFINE_UI import MeihuaConfig
-from ...data.Color_Wuxing import (get_wuxing_color_by_xiantian, TI_COLOR, YONG_COLOR,
+from ...algorithms.wuxingTools import (get_wuxing_color_by_xiantian, TI_COLOR, YONG_COLOR,
                                    O_COLOR, X_COLOR)
 from .common import _LineMarker, is_light_color, line_name, build_interpretation
 

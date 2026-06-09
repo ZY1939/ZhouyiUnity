@@ -248,6 +248,10 @@ class HexagramDrawer(QWidget):
         self._wuxing_upper_color = QColor("#e74c3c")  # 上卦五行颜色（爻线4-6）
         self._wuxing_lower_color = QColor("#e74c3c")  # 下卦五行颜色（爻线1-3）
         self._custom_title = ...                  # 自定义标题：...=默认gua_name, None=不画, str=替换
+        self._fushen_texts: list[str | None] = [None] * 6  # 伏神文字（0=初爻..5=上爻）
+        self._fushen_fs_offset = -4
+        self._fushen_color = "#999999"
+        self._fushen_bold = True
 
         # ── 绘制参数（由 QFontMetrics 精确计算） ──
         # 获取当前应用字体作为基准，后续 set_font_size() 只改字号不改 family
@@ -314,22 +318,12 @@ class HexagramDrawer(QWidget):
             2. 最长卦名宽度（粗体 "䷀ 火水未济" + 12px padding）
 
         使用粗体 QFontMetrics 测量卦名宽度，因为卦名在 paintEvent 中以粗体绘制。
-        设置 min/max width 限制，防止 widget 在布局中过度伸缩。
-
-        参数:
-            font: QFont | None — 字体对象。None 时使用当前应用全局字体
-
-        注意:
-            此函数仅在 _apply_font() 和 configure() (当 bar_w 变更时) 中被调用。
-            不会单独触发 — 因为它只影响布局尺寸，不影响绘制内容。
         """
         if font is None:
             font = _app_font()
-        # 用粗体测量卦名宽度 — 卦名以粗体绘制，需准确估算
         bold_font = QFont(font)
         bold_font.setBold(True)
         bfm = QFontMetrics(bold_font)
-        # 最宽卦名约 "䷀ 火水未济" 5-6 个视觉字符
         name_w = bfm.horizontalAdvance("䷀ 火水未济") + 12
         min_w = max(self._bar_w + 30, name_w)
         self.setMinimumWidth(max(90, min_w))
@@ -551,6 +545,25 @@ class HexagramDrawer(QWidget):
         self._custom_title = title
         self.update()
 
+    def set_fushen_texts(self, texts: list[str | None],
+                          font_size_offset: int = -4,
+                          color: str = "#999999",
+                          bold: bool = True):
+        """
+        设置每爻下方显示的伏神文字（None = 该爻无伏神）
+
+        Args:
+            texts: list[str|None] — 长度6，索引0=初爻..5=上爻
+            font_size_offset: 相对主字号的偏移（默认-4）
+            color: 文字颜色
+            bold: 是否加粗
+        """
+        self._fushen_texts = texts
+        self._fushen_fs_offset = font_size_offset
+        self._fushen_color = color
+        self._fushen_bold = bold
+        self.update()
+
     def set_lines(self, yang_lines: list[bool]):
         """
         设置 6 爻阴阳状态（从下而上 [初..上]）
@@ -764,6 +777,27 @@ class HexagramDrawer(QWidget):
                 seg_w = (bar_w - yin_gap) // 2  # 每段宽度
                 p.drawRoundedRect(int(cx - half_w), bar_top, seg_w, bar_h, 3, 3)
                 p.drawRoundedRect(int(cx + half_w - seg_w), bar_top, seg_w, bar_h, 3, 3)
+
+        # ── 3. 伏神文字（爻线下方/上方空隙处） ──
+        # 初爻(i=0)伏神显示在1/2爻之间（爻线上方），避免被底部解读方块遮挡
+        if any(t for t in self._fushen_texts):
+            fs_font = _app_font()
+            fs_font.setPointSize(max(8, self._font_size + self._fushen_fs_offset))
+            fs_font.setBold(self._fushen_bold)
+            p.setFont(fs_font)
+            fm = QFontMetrics(fs_font)
+            p.setPen(QColor(self._fushen_color))
+            for i in range(6):
+                txt = self._fushen_texts[i]
+                if not txt:
+                    continue
+                bar_center_y = offset + name_h + (5 - i) * line_h + line_h // 2
+                if i == 0:
+                    fushen_y = bar_center_y - line_h // 2  # 初爻：爻线上方
+                else:
+                    fushen_y = bar_center_y + line_h // 2  # 其他爻：爻线下方
+                tw = fm.horizontalAdvance(txt)
+                p.drawText(int(cx - tw // 2), int(fushen_y + fm.ascent() // 2), txt)
 
         p.end()
 

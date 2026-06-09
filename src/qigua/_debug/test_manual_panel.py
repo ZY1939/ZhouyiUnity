@@ -12,6 +12,11 @@ p = QiguaPanel()
 p.show()
 app.processEvents()
 
+# 强制切到手工模式（避免上次保存的方法影响测试）
+p._dots[0].setChecked(True)
+p._switch_method("manual")
+app.processEvents()
+
 _failures = 0
 
 def header(msg):
@@ -414,9 +419,9 @@ p._manual_cbs[0].setChecked(True)
 p._manual_cbs[2].setChecked(True)
 app.processEvents()
 check(len(p._changing_lines) == 2, "应有2个动爻")
-check(sp._dots[0].isEnabled() == False, "梅花 dot 应禁用（>1动爻）")
+check(sp._dots[0].isEnabled() == True, "梅花 dot 应可点击（灰色但不禁用）")
 check(sp._current_method == "liuyao", ">1动爻应在六爻")
-print("  ✅ 8d: >1动爻无单动爻 → 梅花禁用，保持六爻")
+print("  ✅ 8d: >1动爻无单动爻 → 梅花灰色可点击（警告提示），保持六爻")
 
 # ═══════════════════════════════════════════════════════════
 #  测试9: 卦图点击 → 动爻复选框联动

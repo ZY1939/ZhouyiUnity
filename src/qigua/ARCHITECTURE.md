@@ -88,7 +88,7 @@ src/qigua/
 | `suangua/__init__.py` | divination_panel | 导出 SuanguaPanel |
 | `suangua/suangua_panel.py` | divination_panel | 算卦主面板：算卦标题 + 梅花/六爻 dot + 时间管理 + QStackedWidget |
 | `suangua/meihua_panel.py` | suangua_panel | 梅花面板：本/互/变三卦 + 体用标注 + ○/× 动爻标注 + 爻辞解读 |
-| `suangua/liuyao_panel.py` | suangua_panel | 六爻面板：主卦 + 六神/世应/动爻/纳音 5列标注 + 时间选择器 |
+| `suangua/liuyao_panel.py` | suangua_panel | 六爻面板：主卦 + 六神/世应/动爻/纳音 5列标注 + 主事爻选择 + 时间选择器 |
 
 ### 🔮 预留接口（已实现但未接入 UI，后续开发用）
 
@@ -420,3 +420,20 @@ Lock 和 单动爻 在同一列 (col2)，天然水平对齐。所有字号 (15-1
 - 列间 spacer 使用 `max(gap_marker_to_marker, gap_between_columns)`
 - `compute_min_width` 公式区分有标注列（`col_w = col_pad + dw`）和无标注列（`dw`）
   - `min_w = gap_meihua_left + 2*col_w + dw + 2*spacer + gap_meihua_right`
+
+### 六爻面板主事爻选择功能（2026-06-09 新增）
+
+- 点击 HexagramDrawer 爻线选择主事爻，使用 `installEventFilter` 拦截点击（**不能**用 `set_clickable(True)`，因为那会切换爻阴阳）
+- `_zhushiyao_line: int` — 0=未选择，1-6=初爻..上爻。再次点击同一爻取消选择
+- 状态栏显示 `[Info] 设置主事爻为 {六亲}` / `[Info] 已取消主事爻`，5 秒后自动恢复
+- 世应标注同列显示橙色「主」字方块（`set_markers` 追加条目到 `_shiying_marker`）。若与世应重叠，世应颜色变橙色
+- 动爻标记联动变色：主事爻的 ○（老阳）→ 橙色 `#ff9500`，×（老阴）→ 紫色 `#af52de`
+- 同一卦动爻变更时保留选择，换卦时重置
+- 颜色常量放文件顶部（import 后第 3 行），方便快速修改
+- QTimer 防堆积：用 `QTimer` 对象（`setSingleShot(True)`），每次点击先 `stop()`+`deleteLater()` 再创建新的
+
+### Qt eventFilter 双击问题（2026-06-09）
+
+- **现象**：快速连续点击时第二下无反应
+- **根因**：Qt 将快速双击识别为 `MouseButtonDblClick` 事件，而非 `MouseButtonPress`。只匹配 Press 的 eventFilter 会漏掉第二下
+- **修复**：`event.type() in (QEvent.Type.MouseButtonPress, QEvent.Type.MouseButtonDblClick)`

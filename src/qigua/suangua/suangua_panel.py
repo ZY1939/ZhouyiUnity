@@ -20,7 +20,7 @@ import datetime
 
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
                                 QStackedWidget, QLabel, QButtonGroup, QFrame, QDialog)
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QFont, QFontMetrics
 
 from ...settings.config_manager import config_manager
@@ -234,6 +234,17 @@ class SuanguaPanel(QWidget):
     def _on_dot_clicked(self, btn):
         idx = self._btn_group.id(btn)
         key = self.METHODS[idx]["key"]
+        # 多动爻(>1)不支持梅花 → 回退 dot 状态 + 状态栏警告，不切换
+        if key == "meihua" and len(self._changing_lines) > 1:
+            # QButtonGroup 已将梅花选蓝、六爻取消 → 回退（不 blockSignals，
+            # 让 _on_toggled 正常更新样式，且程序化 setChecked 不触发 buttonClicked）
+            self._dots[0].setChecked(False)
+            self._dots[1].setChecked(True)
+            mgr = getattr(self.window(), "_statusbar_mgr", None)
+            if mgr:
+                mgr.show_status('<span style="color:#f0a030;">[Warn] 多动爻不支持梅花易数，请使用六爻</span>')
+                QTimer.singleShot(5000, mgr.reset_status)
+            return
         self._switch_method(key)
 
     def switch_method(self, key: str):
@@ -321,13 +332,15 @@ class SuanguaPanel(QWidget):
             hour = 0
         return datetime.datetime(year, month, day, hour, 0)
 
-    def set_gua_result(self, ben_data: dict, changing_lines: list[int]):
+    def set_gua_result(self, ben_data: dict, changing_lines: list[int],
+                        bian_data: dict | None = None):
         """
         接收起卦结果，更新算卦面板
 
         Args:
             ben_data: 本卦数据 dict
             changing_lines: 动爻列表
+            bian_data: 变卦数据 dict（None=无变卦）
 
         行为：
           - >1 动爻: 梅花选项禁用，强制六爻
@@ -335,6 +348,7 @@ class SuanguaPanel(QWidget):
         """
         self._gua_result = ben_data
         self._changing_lines = changing_lines
+        self._bian_data = bian_data
         n = len(changing_lines)
 
         # 确保时间已初始化
@@ -342,18 +356,22 @@ class SuanguaPanel(QWidget):
         self._propagate_time()
 
         # 始终更新六爻面板（无论动爻数）
-        self._liuyao_panel.set_gua_result(ben_data, changing_lines)
+        self._liuyao_panel.set_gua_result(ben_data, changing_lines, bian_data)
 
         if n > 1:
-            # 多动爻：禁用梅花，强制六爻
-            self._dots[0].setEnabled(False)
-            self._header_labels[0].setEnabled(False)
+            # 多动爻：梅花不可用（灰色但仍可点击 → 点击时状态栏警告）
+            self._dots[0].setEnabled(True)
+            self._header_labels[0].setEnabled(True)
             self._header_labels[0].setStyleSheet(f"""
                 QPushButton {{ color: #aaa; border: none; background: transparent; font-size: {self._font_size}px; }}
             """)
             if self._current_method == "meihua":
                 self._dots[1].setChecked(True)
                 self._switch_method("liuyao")
+                mgr = getattr(self.window(), "_statusbar_mgr", None)
+                if mgr:
+                    mgr.show_status('<span style="color:#007aff;">[Info] 多动爻不支持梅花，已切换为六爻</span>')
+                    QTimer.singleShot(5000, mgr.reset_status)
             return
 
         # n <= 1: 梅花可用，更新数据

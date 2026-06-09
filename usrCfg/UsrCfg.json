@@ -44,15 +44,16 @@
   },
   "general": {
     "last_tab_index": 0,
-    "qigua_method": "manual",
-    "suangua_method": "meihua"
+    "qigua_method": "three",
+    "suangua_method": "liuyao",
+    "liuyao_compact": false
   },
   "window": {
     "lock_aspect_ratio": true,
     "auto_resize_with_font": false,
     "auto_scale_factor": 1.0,
     "no_resize": false,
-    "window_width": 1024,
-    "window_height": 696
+    "window_width": 1043,
+    "window_height": 709
   }
 }

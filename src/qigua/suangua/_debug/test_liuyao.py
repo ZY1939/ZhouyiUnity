@@ -16,7 +16,8 @@ from PySide6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QPushButton,
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QFont
 
-from src.qigua.suangua.liuyao_panel import LiuyaoPanel, _compute_current_ganzhi
+from src.qigua.suangua.liuyao_panel import LiuyaoPanel
+from src.qigua.suangua.common import compute_current_ganzhi
 from src.qigua.hexagram_loader import load_all_gua
 
 
@@ -48,7 +49,7 @@ def build_test_window():
     root.addWidget(title)
 
     # 当前干支显示
-    gz = _compute_current_ganzhi()
+    gz = compute_current_ganzhi()
     gz_label = QLabel(
         f"当前时间: {gz['year_ganzhi']}年 {gz['month_ganzhi']}月 "
         f"{gz['day_ganzhi']}日 {gz['hour_ganzhi']}时  "
@@ -77,6 +78,7 @@ def build_test_window():
         ("乾为天", [1, 4], "乾为天 (动爻1,4)"),
         ("乾为天", [], "乾为天 (静卦)"),
         ("天风姤", [2], "天风姤 (动爻2)"),
+        ("天地否", [1], "天地否 (动爻1, 初爻伏神)"),
         ("离为火", [3, 6], "离为火 (动爻3,6)"),
         ("坎为水", [1, 2, 5], "坎为水 (动爻1,2,5)"),
         ("坤为地", [2], "坤为地 (动爻2)"),
@@ -120,7 +122,7 @@ def build_test_window():
     root.addWidget(scroll, 1)
 
     # 自动测试：加载第一个测试
-    QTimer.singleShot(200, make_test("乾为天", [1, 4]))
+    QTimer.singleShot(200, make_test("天地否", [1]))
 
     # DEBUG 输出
     if os.environ.get("ZY_DEBUG"):

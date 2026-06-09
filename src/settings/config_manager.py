@@ -197,6 +197,8 @@ DEFAULT_CONFIG = {
     "general": {
         "last_tab_index": 4,  # 默认启动显示"设置"标签页
         "qigua_method": "manual",  # 起卦方式：manual/three/coin/yarrow
+        "suangua_method": "meihua",  # 算卦方式：meihua/liuyao
+        "liuyao_compact": False,  # 六爻面板精简模式：False=全部 True=精简
     },
 }
 

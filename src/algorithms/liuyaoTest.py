@@ -102,6 +102,9 @@ def main():
             failed += 1
             errors.append(msg)
 
+    # 错误日志路径
+    _LOG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "liuyao_errors.log")
+
     # ── 1. 基础数据完整性 ──
     print(f"\n{_c('W', '╔══════════════════════════════════════════════╗')}")
     print(f"{_c('W', '║')}  {_c('B', '1. 基础数据完整性')}" + " " * 35 + f"{_c('W', '║')}")
@@ -169,40 +172,41 @@ def main():
         check(info["ying_line"] == exp_ying, f"{name} 应爻期望{exp_ying}得{info['ying_line']}")
         print(f"  {_OK} {name} ({category}): 世{info['shi_line']} 应{info['ying_line']}")
 
-    # ── 4. 纳甲继承 ──
+    # ── 4. 纳甲验证（上卦/下卦分别继承对应八纯卦）──
     print(f"\n{_c('W', '╔══════════════════════════════════════════════╗')}")
-    print(f"{_c('W', '║')}  {_c('B', '4. 纳甲继承验证')}" + " " * 39 + f"{_c('W', '║')}")
+    print(f"{_c('W', '║')}  {_c('B', '4. 纳甲验证（上下卦分别继承）')}" + " " * 27 + f"{_c('W', '║')}")
     print(f"{_c('W', '╚══════════════════════════════════════════════╝')}")
 
-    # 每宫抽一个非八纯卦验证
+    # 每个卦的下卦初/二/三爻继承下卦八纯卦，上卦四/五/上爻继承上卦八纯卦
     najia_samples = [
-        ("乾宫", "天风姤"),
-        ("坎宫", "水雷屯"),
-        ("艮宫", "山火贲"),
-        ("震宫", "雷地豫"),
-        ("巽宫", "风天小畜"),
-        ("离宫", "火山旅"),
-        ("坤宫", "地雷复"),
-        ("兑宫", "泽水困"),
+        ("天风姤", "巽为风", "乾为天"),   # 下巽上乾
+        ("水雷屯", "震为雷", "坎为水"),   # 下震上坎
+        ("山火贲", "离为火", "艮为山"),   # 下离上艮
+        ("雷地豫", "坤为地", "震为雷"),   # 下坤上震
+        ("风天小畜", "乾为天", "巽为风"), # 下乾上巽
+        ("火山旅", "艮为山", "离为火"),   # 下艮上离
+        ("地雷复", "震为雷", "坤为地"),   # 下震上坤
+        ("泽水困", "坎为水", "兑为泽"),   # 下坎上兑
     ]
-    for palace, gua_name in najia_samples:
-        bagua_name = {v: k for k, v in {
-            "乾宫": "乾为天", "坎宫": "坎为水", "艮宫": "艮为山", "震宫": "震为雷",
-            "巽宫": "巽为风", "离宫": "离为火", "坤宫": "坤为地", "兑宫": "兑为泽",
-        }.items()}.get(palace, "") or {
-            "乾宫": "乾为天", "坎宫": "坎为水", "艮宫": "艮为山", "震宫": "震为雷",
-            "巽宫": "巽为风", "离宫": "离为火", "坤宫": "坤为地", "兑宫": "兑为泽",
-        }[palace]
-
-        bagua_najia = get_najia(bagua_name)
+    for gua_name, lower_bagua, upper_bagua in najia_samples:
+        lower_najia = get_najia(lower_bagua)
+        upper_najia = get_najia(upper_bagua)
         gua_najia = get_najia(gua_name)
-        for i in range(6):
+        # 下卦：初/二/三爻（索引0-2）继承下卦八纯卦
+        for i in range(3):
             check(
-                bagua_najia[i]["gan"] == gua_najia[i]["gan"] and
-                bagua_najia[i]["zhi"] == gua_najia[i]["zhi"],
-                f"{gua_name} 第{i+1}爻纳甲与{bagua_name}不一致"
+                lower_najia[i]["gan"] == gua_najia[i]["gan"] and
+                lower_najia[i]["zhi"] == gua_najia[i]["zhi"],
+                f"{gua_name} 第{i+1}爻纳甲与{lower_bagua}不一致"
             )
-        print(f"  {_OK} {gua_name} → 继承{bagua_name}纳甲")
+        # 上卦：四/五/上爻（索引3-5）继承上卦八纯卦
+        for i in range(3, 6):
+            check(
+                upper_najia[i]["gan"] == gua_najia[i]["gan"] and
+                upper_najia[i]["zhi"] == gua_najia[i]["zhi"],
+                f"{gua_name} 第{i+1}爻纳甲与{upper_bagua}不一致"
+            )
+        print(f"  {_OK} {gua_name} → 下{lower_bagua[:2]}上{upper_bagua[:2]}")
 
     # ── 5. 六亲计算 ──
     print(f"\n{_c('W', '╔══════════════════════════════════════════════╗')}")
@@ -336,11 +340,24 @@ def main():
     print(f"  {_c('W', '测试结果:')}  总计 {passed + failed} 项  "
           f"{_c('G', f'{passed} 通过')}  "
           f"{_c('R', f'{failed} 失败') if failed else ''}")
+
     if failed:
+        # 写入错误日志（AI 可直接读取此文件）
+        from datetime import datetime
+        with open(_LOG_PATH, "w", encoding="utf-8") as f:
+            f.write(f"liuyao 测试错误日志 — {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f.write(f"通过: {passed}  失败: {failed}  总计: {passed + failed}\n")
+            f.write(f"{'─' * 60}\n\n")
+            for i, err in enumerate(errors, 1):
+                f.write(f"  [{i}] {err}\n")
         print(f"\n  {_c('R', '失败项:')}")
         for err in errors:
             print(f"    {_c('R', '✗')} {err}")
+        print(f"\n  {_c('D', f'错误详情已写入: {_LOG_PATH}')}")
     else:
+        # 全部通过 → 清空日志文件
+        if os.path.exists(_LOG_PATH):
+            os.remove(_LOG_PATH)
         print(f"\n  {_c('G', '🎉 全部测试通过！六爻纳甲模块工作正常。')}")
     print(f"{_SEP2}\n")
 

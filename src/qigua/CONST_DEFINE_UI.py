@@ -21,6 +21,9 @@ qigua 目录 UI 布局参数集中配置
 class QiguaConfig:
     """起卦面板 (divination_panel.py) UI 布局参数"""
 
+    # 状态栏 Info/Warn 消息显示时长（ms）
+    STATUS_MSG_DURATION = 5000
+
     # === header ===
     # 模组到窗口最左侧边缘的留白（px），控制起卦/算卦等所有模组的左侧统一缩进
     gap_module_left = 10
@@ -144,22 +147,24 @@ class LiuyaoConfig:
     # 右边缘距面板右边缘的最小距离（px）
     gap_liuyao_right = 0
 
-    # 标注文字到卦图的距离（px）
-    gap_marker_to_drawer = -4
+    # 标注文字到卦图的距离（px），负值=标注叠入卦图留白区
+    gap_marker_to_drawer = -8
 
     # 六神标注 → 世应标注 水平间距（px）
-    gap_liushen_to_shiying = 2
+    gap_liushen_to_shiying = 4
 
     # 动爻标注 → 纳音标注 水平间距（px）
-    gap_dongyao_to_nayin = 4
+    gap_dongyao_to_nayin = 2
+    # 纳音标注 → 伏神标注 水平间距（px）
+    gap_nayin_to_fushen = 2
 
     # badge 轮廓比文字大的内边距（px），六神/世应/动爻共用
     badge_padding = 0
 
     # 纳音边框线宽（px）
-    nayin_border_width = 2
+    nayin_border_width = 1
     # 纳音文字到边框的内边距（px）
-    nayin_padding = 4
+    nayin_padding = 2
 
     # 六神字号偏移（相对全局 font_size，正=更大）
     fs_offset_liushen = 0
