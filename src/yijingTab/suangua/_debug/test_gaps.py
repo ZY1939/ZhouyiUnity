@@ -7,7 +7,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirna
 from PySide6.QtWidgets import QApplication
 app = QApplication(sys.argv)
 
-from src.qigua.suangua.liuyao_panel import LiuyaoPanel
+from src.yijingTab.suangua.liuyao_panel import LiuyaoPanel
 
 panel = LiuyaoPanel()
 panel.set_font_size(16)

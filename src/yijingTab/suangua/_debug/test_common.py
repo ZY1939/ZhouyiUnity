@@ -40,7 +40,7 @@ def section(title):
 # ═══════════════════════════════════════════════════════════════
 section("1. is_light_color 颜色亮度判断")
 
-from src.qigua.suangua.common import is_light_color
+from src.yijingTab.suangua.common import is_light_color
 
 check(is_light_color("#ffffff") == True, "#ffffff 亮色→True")
 check(is_light_color("#000000") == False, "#000000 暗色→False")
@@ -57,7 +57,7 @@ check(is_light_color("") == False, "空字符串→False")
 # ═══════════════════════════════════════════════════════════════
 section("2. line_name 爻名计算")
 
-from src.qigua.suangua.common import line_name
+from src.yijingTab.suangua.common import line_name
 
 # 乾卦 (111111) — 全是阳爻 → 初九/九二/九三/九四/九五/上九
 check(line_name("111111", 1) == "初九", "乾 初爻→初九")
@@ -86,7 +86,7 @@ check(line_name("101010", 6) == "上六", "既济 上爻(阴)→上六")
 # ═══════════════════════════════════════════════════════════════
 section("3. 干支历法计算")
 
-from src.qigua.suangua.common import compute_current_ganzhi, compute_day_ganzhi
+from src.yijingTab.suangua.common import compute_current_ganzhi, compute_day_ganzhi
 import datetime
 
 gz = compute_current_ganzhi()
@@ -119,7 +119,7 @@ check(day_gz60 == "甲子", f"2024-03-01 (+60天) 日干支={day_gz60} (期望�
 # ═══════════════════════════════════════════════════════════════
 section("4. gregorian_to_ganzhi_parts")
 
-from src.qigua.suangua.common import gregorian_to_ganzhi_parts
+from src.yijingTab.suangua.common import gregorian_to_ganzhi_parts
 
 parts = gregorian_to_ganzhi_parts(datetime.datetime(2024, 1, 1, 0, 0))
 check(parts["day_gan"] == "甲", f"公历2024-01-01 日干={parts['day_gan']}")
@@ -137,7 +137,7 @@ check("hour_zhi" in parts, "含 hour_zhi")
 # ═══════════════════════════════════════════════════════════════
 section("5. ganzhi_to_approx_year")
 
-from src.qigua.suangua.common import ganzhi_to_approx_year
+from src.yijingTab.suangua.common import ganzhi_to_approx_year
 
 y2024 = ganzhi_to_approx_year("甲辰", 2024)
 check(y2024 == 2024, f"甲辰 near 2024 = {y2024} (期望2024)")
@@ -151,7 +151,7 @@ check(y2025 == 2025, f"乙巳 near 2025 = {y2025} (期望2025)")
 # ═══════════════════════════════════════════════════════════════
 section("6. compatible_zhis 天干地支配对")
 
-from src.qigua.suangua.common import compatible_zhis
+from src.yijingTab.suangua.common import compatible_zhis
 
 yang_zhis = compatible_zhis("甲")
 check(len(yang_zhis) == 6, f"甲(阳干) 兼容地支数={len(yang_zhis)} (期望6)")
@@ -169,8 +169,8 @@ check("子" not in yin_zhis, "乙不配阳支子")
 # ═══════════════════════════════════════════════════════════════
 section("7. build_interpretation 卦辞/爻辞解读")
 
-from src.qigua.suangua.common import build_interpretation, BLUE_BG, ORANGE_BG
-from src.qigua.hexagram_loader import get_gua_by_xiantian
+from src.yijingTab.suangua.common import build_interpretation, BLUE_BG, ORANGE_BG
+from src.yijingTab.com.hexagram_loader import get_gua_by_xiantian
 
 # 乾为天
 qian = get_gua_by_xiantian(1, 1)
@@ -350,7 +350,7 @@ if r0_check:
 # ═══════════════════════════════════════════════════════════════
 section("8. _LineMarker 标注组件")
 
-from src.qigua.suangua.common import _LineMarker
+from src.yijingTab.suangua.common import _LineMarker
 
 # ── 创建左标注（右对齐）──
 lm_left = _LineMarker(align_right=True, parent=None)
@@ -440,7 +440,7 @@ check(lm_test._offset_y == 0, "存储 offset_y=0")
 # ═══════════════════════════════════════════════════════════════
 section("10. MeihuaPanel 集成测试")
 
-from src.qigua.suangua.meihua_panel import MeihuaPanel
+from src.yijingTab.suangua.meihua_panel import MeihuaPanel
 
 mp = MeihuaPanel()
 check(mp is not None, "创建 MeihuaPanel")
@@ -481,7 +481,7 @@ check(min_w > 200, f"MeihuaPanel min_width={min_w} > 200")
 # ═══════════════════════════════════════════════════════════════
 section("11. LiuyaoPanel 集成测试")
 
-from src.qigua.suangua.liuyao_panel import LiuyaoPanel
+from src.yijingTab.suangua.liuyao_panel import LiuyaoPanel
 
 lp = LiuyaoPanel()
 check(lp is not None, "创建 LiuyaoPanel")
@@ -531,7 +531,7 @@ check(min_w_liu > 200, f"LiuyaoPanel min_width={min_w_liu} > 200")
 # ═══════════════════════════════════════════════════════════════
 section("12. SuanguaPanel 集成测试")
 
-from src.qigua.suangua.suangua_panel import SuanguaPanel
+from src.yijingTab.suangua.suangua_panel import SuanguaPanel
 
 sp = SuanguaPanel()
 check(sp is not None, "创建 SuanguaPanel")

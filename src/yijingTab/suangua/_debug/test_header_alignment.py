@@ -19,10 +19,10 @@ from PySide6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout,
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QFont, QFontMetrics
 
-from src.qigua.divination_panel import QiguaPanel
-from src.qigua.suangua.suangua_panel import SuanguaPanel
-from src.qigua.CONST_DEFINE_UI import QiguaConfig, SuanguaConfig
-from src.qigua.hexagram_drawer import HexagramDrawer, _app_font
+from src.yijingTab.qigua.divination_panel import QiguaPanel
+from src.yijingTab.suangua.suangua_panel import SuanguaPanel
+from src.yijingTab.CONST_DEFINE_UI import QiguaConfig, SuanguaConfig
+from src.yijingTab.com.hexagram_drawer import HexagramDrawer, _app_font
 
 
 def measure_positions(qigua_panel, suangua_panel, font_size, label=""):

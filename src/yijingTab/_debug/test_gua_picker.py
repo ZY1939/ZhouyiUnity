@@ -54,8 +54,8 @@ def run_tests():
     # ── 第2步：导入 QiguaPanel ──
     log("导入 QiguaPanel...")
     try:
-        from src.qigua.divination_panel import QiguaPanel, _GuaPickerPopup, _DotButton
-        from src.qigua.hexagram_loader import load_all_gua
+        from src.yijingTab.qigua.divination_panel import QiguaPanel, _GuaPickerPopup, _DotButton
+        from src.yijingTab.com.hexagram_loader import load_all_gua
         log("  导入成功")
     except Exception as e:
         log(f"  [FAIL] 导入失败: {e}")

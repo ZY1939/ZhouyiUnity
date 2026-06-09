@@ -11,7 +11,7 @@ from PySide6.QtWidgets import QApplication
 
 app = QApplication(sys.argv)
 
-from src.qigua.suangua.liuyao_panel import LiuyaoPanel
+from src.yijingTab.suangua.liuyao_panel import LiuyaoPanel
 from src.algorithms.liuyao import get_fushen
 
 TEST_CASES = [

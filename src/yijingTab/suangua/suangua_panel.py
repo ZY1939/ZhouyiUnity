@@ -24,7 +24,7 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QFont, QFontMetrics
 
 from ...settings.config_manager import config_manager
-from ..dot_button import DotButton
+from ..com.dot_button import DotButton
 from ..CONST_DEFINE_UI import SuanguaConfig
 from .meihua_panel import MeihuaPanel
 from .liuyao_panel import LiuyaoPanel

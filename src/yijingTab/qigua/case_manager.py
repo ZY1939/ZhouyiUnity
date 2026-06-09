@@ -36,7 +36,7 @@
     - config_manager.py: 风格参考（文件读写模式一致）
 
 用法示例:
-    from src.qigua.case_manager import save_case, load_cases, get_case, delete_case
+    from src.yijingTab.qigua.case_manager import save_case, load_cases, get_case, delete_case
 
     # 使用默认路径
     result = calc_three_numbers(123, 456, 789)
@@ -55,10 +55,11 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from .bagua import GuaResult
+from ..com.bagua import GuaResult
+from ...settings.config_manager import get_project_root
 
 # ── 默认存储路径（与 usrCfg/UsrCfg.json 同目录）──
-_DEFAULT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "usrCfg")
+_DEFAULT_DIR = os.path.join(get_project_root(), "usrCfg")
 _DEFAULT_PATH = os.path.join(_DEFAULT_DIR, "divination_cases.json")
 
 
@@ -122,8 +123,8 @@ def save_case(result: GuaResult, method: str, notes: str = "",
         str: 案例 ID（UUID[:8] 格式，可用于后续查询/删除）
 
     使用示例:
-        from src.qigua.hexagram_calc import calc_three_numbers
-        from src.qigua.case_manager import save_case
+        from src.yijingTab.com.hexagram_calc import calc_three_numbers
+        from src.yijingTab.qigua.case_manager import save_case
 
         result = calc_three_numbers(123, 456, 789)
         case_id = save_case(result, method="three", notes="问事业")

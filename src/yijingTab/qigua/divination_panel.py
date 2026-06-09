@@ -78,17 +78,17 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QFont, QFontMetrics, QPainter, QPixmap, QColor, QPen, QPainterPath
 import os
 
-from ..settings.config_manager import config_manager
+from ...settings.config_manager import config_manager, get_project_root
 
-from .bagua import GuaResult, COIN_TO_YAO, YARROW_TO_YAO
-from .hexagram_drawer import HexagramDrawer
-from .hexagram_calc import calc_three_numbers, calc_from_yang_lines, calc_six_lines, _yang_to_xiantian
-from .hexagram_loader import load_all_gua, get_gua_by_xiantian
-from ..algorithms.mutiDongyaoSel import get_judgment_line
+from ..com.bagua import GuaResult, COIN_TO_YAO, YARROW_TO_YAO
+from ..com.hexagram_drawer import HexagramDrawer
+from ..com.hexagram_calc import calc_three_numbers, calc_from_yang_lines, calc_six_lines, _yang_to_xiantian
+from ..com.hexagram_loader import load_all_gua, get_gua_by_xiantian
+from ...algorithms.mutiDongyaoSel import get_judgment_line
 from .countdown_timer import CountdownDialog
 from .stopwatch_timer import StopwatchDialog
-from .suangua import SuanguaPanel
-from .CONST_DEFINE_UI import QiguaConfig
+from ..suangua import SuanguaPanel
+from ..CONST_DEFINE_UI import QiguaConfig
 import os
 
 # ── 调试断言：仅异常时输出到终端，方便排查问题 ──
@@ -1387,7 +1387,7 @@ class QiguaPanel(QWidget):
             return self.__lock_chk_path
         except AttributeError:
             pass
-        d = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "usrCfg")
+        d = os.path.join(get_project_root(), "usrCfg")
         os.makedirs(d, exist_ok=True)
         p = os.path.join(d, "_lock_chk.png")
         if not os.path.exists(p):

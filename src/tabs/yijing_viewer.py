@@ -21,7 +21,7 @@ class YijingViewer:
         if layout is None:
             return
 
-        from ..qigua import QiguaPanel
+        from ..yijingTab import QiguaPanel
 
         self._qigua_panel = QiguaPanel()
         layout.addWidget(self._qigua_panel)

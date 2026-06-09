@@ -254,6 +254,7 @@ class HexagramDrawer(QWidget):
         self._fushen_bold = True
         self._fushen_highlight_line: int | None = None  # 高亮行索引（0=初爻..5=上爻），None=不高亮
         self._fushen_highlight_shift = 4  # 高亮行垂直偏移（px），正=远离爻线
+        self._line_color_overrides: dict[int, QColor] = {}  # 逐爻颜色覆盖 {line_idx: QColor}
 
         # ── 绘制参数（由 QFontMetrics 精确计算） ──
         # 获取当前应用字体作为基准，后续 set_font_size() 只改字号不改 family
@@ -576,6 +577,17 @@ class HexagramDrawer(QWidget):
         self._fushen_highlight_line = line_idx
         self.update()
 
+    def set_line_color_overrides(self, overrides: dict[int, str]):
+        """
+        设置逐爻颜色覆盖（变卦动爻加深用）
+
+        Args:
+            overrides: {line_idx: css_color, ...}  line_idx: 0=初爻..5=上爻
+                       空 dict = 清除所有覆盖，恢复默认颜色
+        """
+        self._line_color_overrides = {k: QColor(v) for k, v in overrides.items()}
+        self.update()
+
     def set_lines(self, yang_lines: list[bool]):
         """
         设置 6 爻阴阳状态（从下而上 [初..上]）
@@ -766,13 +778,14 @@ class HexagramDrawer(QWidget):
             center_y = offset + name_h + (5 - i) * line_h + line_h // 2
             bar_top = int(center_y - bar_h // 2)  # bar 顶部 = 中心 - 半高
             is_yang = self._yang_lines[i]
-            if self._wuxing_mode:
-                # 五行模式：上下卦分色（i=0-2下卦, i=3-5上卦）
+            if self._line_color_overrides and i in self._line_color_overrides:
+                color = self._line_color_overrides[i]
+            elif self._wuxing_mode:
                 color = self._wuxing_upper_color if i >= 3 else self._wuxing_lower_color
             elif self._disabled_mode:
-                color = self._disabled_color  # 禁用模式：灰色
+                color = self._disabled_color
             else:
-                color = _YANG_COLOR if is_yang else _YIN_COLOR  # 默认：红/蓝
+                color = _YANG_COLOR if is_yang else _YIN_COLOR
 
             p.setPen(Qt.PenStyle.NoPen)  # 无边框，纯色填充
             p.setBrush(color)

@@ -18,10 +18,10 @@ from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont, QFontMetrics
 
-from ..hexagram_drawer import HexagramDrawer, _app_font
-from ..hexagram_loader import get_gua_by_xiantian
-from ..hexagram_calc import _yang_to_xiantian
-from ..bagua import XIANTIAN
+from ..com.hexagram_drawer import HexagramDrawer, _app_font
+from ..com.hexagram_loader import get_gua_by_xiantian
+from ..com.hexagram_calc import _yang_to_xiantian
+from ..com.bagua import XIANTIAN
 from ..CONST_DEFINE_UI import MeihuaConfig
 from ...algorithms.wuxingTools import (get_wuxing_color_by_xiantian, TI_COLOR, YONG_COLOR,
                                    O_COLOR, X_COLOR)
@@ -179,6 +179,7 @@ class MeihuaPanel(QWidget):
         self._interpret_label = QLabel("")
         self._interpret_label.setWordWrap(True)
         self._interpret_label.setTextFormat(Qt.TextFormat.RichText)
+        self._interpret_label.setStyleSheet("background: transparent;")
         interp_layout.addWidget(self._interpret_label)
         root.addWidget(self._interpret_frame)
 

@@ -9,8 +9,8 @@ from PySide6.QtGui import QFontMetrics
 
 app = QApplication(sys.argv)
 
-from src.qigua.suangua.liuyao_panel import LiuyaoPanel
-from src.qigua.hexagram_drawer import _app_font
+from src.yijingTab.suangua.liuyao_panel import LiuyaoPanel
+from src.yijingTab.com.hexagram_drawer import _app_font
 
 panel = LiuyaoPanel()
 panel.set_font_size(16)

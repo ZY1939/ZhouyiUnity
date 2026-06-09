@@ -19,14 +19,14 @@
     - bagua.py: GuaResult
 
 用法示例（后续实现后）:
-    from src.qigua.hexagram_painter import GuaPainter
+    from src.yijingTab.qigua.hexagram_painter import GuaPainter
 
     painter = GuaPainter()
     painter.draw_gua(my_widget, result)   # 在 my_widget 上绘制
     painter.clear(my_widget)              # 清空画布
 """
 from PySide6.QtWidgets import QWidget
-from .bagua import GuaResult
+from ..com.bagua import GuaResult
 
 
 class GuaPainter:
@@ -39,7 +39,7 @@ class GuaPainter:
         - 作为独立绘制器，不绑定特定 Widget，可复用到任何 QWidget canvas
 
     示例（后续实现后）:
-        from src.qigua import GuaPainter
+        from src.yijingTab.qigua import GuaPainter
         canvas = QWidget()
         GuaPainter.draw_gua(canvas, result)
     """

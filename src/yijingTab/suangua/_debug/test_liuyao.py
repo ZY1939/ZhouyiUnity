@@ -1,11 +1,12 @@
 """
-六爻面板调试脚本 — 测试 LiuyaoPanel 的布局、对齐和数据显示
+六爻面板调试脚本 — 测试 LiuyaoPanel 的布局、对齐和数据显示（含变卦功能）
 
 Usage:
   cd ~/Desktop/ZhouyiUnity && python3 src/qigua/suangua/_debug/test_liuyao.py
 
 环境变量:
   ZY_DEBUG=1   输出调试信息（对齐坐标等）
+  ZY_DEBUG_BADGE=1  输出 badge 绘制信息
 """
 import sys
 import os
@@ -16,9 +17,9 @@ from PySide6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QPushButton,
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QFont
 
-from src.qigua.suangua.liuyao_panel import LiuyaoPanel
-from src.qigua.suangua.common import compute_current_ganzhi
-from src.qigua.hexagram_loader import load_all_gua
+from src.yijingTab.suangua.liuyao_panel import LiuyaoPanel
+from src.yijingTab.suangua.common import compute_current_ganzhi
+from src.yijingTab.com.hexagram_loader import load_all_gua
 
 
 def find_gua_data(gua_name: str) -> dict | None:
@@ -36,7 +37,7 @@ def build_test_window():
 
     win = QWidget()
     win.setWindowTitle("六爻面板测试 — LiuyaoPanel Debug")
-    win.resize(1100, 750)
+    win.resize(1200, 800)
     win.setStyleSheet("background: #ffffff;")
 
     root = QVBoxLayout(win)
@@ -44,7 +45,7 @@ def build_test_window():
     root.setSpacing(8)
 
     # 标题
-    title = QLabel("六爻面板 (LiuyaoPanel) 测试")
+    title = QLabel("六爻面板 (LiuyaoPanel) 变卦测试")
     title.setStyleSheet("font-size: 20px; font-weight: bold; color: #1d1d1f;")
     root.addWidget(title)
 
@@ -70,19 +71,30 @@ def build_test_window():
             if data:
                 print(f"[TEST] 加载 {gua_name} 动爻={changing_lines}")
                 panel.set_gua_result(data, changing_lines)
+                # 打印变卦信息
+                if panel._bian_info:
+                    bi = panel._bian_info
+                    print(f"  变卦: {bi['bian_name']}  箭头: {len(bi['arrows'])}个")
+                    for idx, d, c, label in bi['arrows']:
+                        print(f"    爻{idx+1}: dir={d} color={c} label={label}")
+                else:
+                    print(f"  无变卦（静卦）")
             else:
                 print(f"[TEST] ❌ 未找到卦: {gua_name}")
         return _test
 
+    # ── 基础测试 ──
     tests = [
-        ("乾为天", [1, 4], "乾为天 (动爻1,4)"),
-        ("乾为天", [], "乾为天 (静卦)"),
-        ("天风姤", [2], "天风姤 (动爻2)"),
-        ("天地否", [1], "天地否 (动爻1, 初爻伏神)"),
-        ("离为火", [3, 6], "离为火 (动爻3,6)"),
-        ("坎为水", [1, 2, 5], "坎为水 (动爻1,2,5)"),
-        ("坤为地", [2], "坤为地 (动爻2)"),
-        ("泽火革", [1, 4, 6], "泽火革 (动爻1,4,6)"),
+        ("乾为天", [], "乾为天 (静卦—安静)"),
+        ("乾为天", [1], "乾为天 (动1—变天风姤)"),
+        ("乾为天", [1, 4], "乾为天 (动1,4—克+生)"),
+        ("乾为天", [1, 2, 3, 4, 5, 6], "乾为天 (全动→坤)"),
+        ("天风姤", [2], "天风姤 (动2)"),
+        ("天地否", [1], "天地否 (动1—伏神)"),
+        ("离为火", [3, 6], "离为火 (动3,6)"),
+        ("坎为水", [1, 2, 5], "坎为水 (动1,2,5—多克)"),
+        ("坤为地", [2], "坤为地 (动2)"),
+        ("泽火革", [1, 4, 6], "泽火革 (动1,4,6)"),
     ]
 
     for gua_name, cls, label_text in tests:
@@ -100,6 +112,37 @@ def build_test_window():
 
     btn_row.addStretch()
     root.addLayout(btn_row)
+
+    # ── 变卦专项测试行 ──
+    bian_label = QLabel("变卦专项测试（验证箭头方向/颜色/标签）:")
+    bian_label.setStyleSheet("font-size: 14px; font-weight: bold; color: #8e44ad; margin-top: 4px;")
+    root.addWidget(bian_label)
+
+    bian_row = QHBoxLayout()
+    bian_row.setSpacing(8)
+
+    bian_tests = [
+        ("火风鼎", [1], "鼎动1(子孙→官鬼:本克变→右克)"),
+        ("火风鼎", [4], "鼎动4(妻财→兄弟:变克本→左克)"),
+        ("水火既济", [2], "既济动2(官鬼→子孙:本克变→右克)"),
+        ("水火既济", [5], "既济动5(妻财→官鬼:变生本→左生)"),
+    ]
+
+    for gua_name, cls, label_text in bian_tests:
+        btn = QPushButton(label_text)
+        btn.setStyleSheet("""
+            QPushButton {
+                font-size: 12px; padding: 4px 10px;
+                background: #f5e6ff; border: 1px solid #c9a8e8;
+                border-radius: 4px; color: #1d1d1f;
+            }
+            QPushButton:hover { background: #e8d5f5; }
+        """)
+        btn.clicked.connect(make_test(gua_name, cls))
+        bian_row.addWidget(btn)
+
+    bian_row.addStretch()
+    root.addLayout(bian_row)
 
     # 分隔线
     sep = QLabel()
@@ -121,13 +164,13 @@ def build_test_window():
     scroll.setWidget(container)
     root.addWidget(scroll, 1)
 
-    # 自动测试：加载第一个测试
-    QTimer.singleShot(200, make_test("天地否", [1]))
+    # 自动测试：加载乾为天(动1,4) 验证变卦显示
+    QTimer.singleShot(300, make_test("乾为天", [1, 4]))
 
     # DEBUG 输出
     if os.environ.get("ZY_DEBUG"):
         print(f"[DEBUG TEST] app font = {app.font().pointSize()}pt", flush=True)
-        QTimer.singleShot(500, lambda: _debug_print(panel))
+        QTimer.singleShot(600, lambda: _debug_print(panel))
 
     return app, win, panel
 
@@ -151,6 +194,23 @@ def _debug_print(panel: LiuyaoPanel):
     if nl:
         print(f"[DEBUG] 纳音: w={nl._fixed_w} items={[(ln, txt) for ln, txt, _ in nl._items]}",
               flush=True)
+
+    # ── 变卦 debug ──
+    if panel._bian_info:
+        bi = panel._bian_info
+        print(f"[DEBUG] 变卦: {bi['bian_name']} 箭头={len(bi['arrows'])}个", flush=True)
+        for idx, d, c, label in bi['arrows']:
+            print(f"       爻{idx+1}: dir={d} color={c} label={label}", flush=True)
+
+    ac = panel._arrow_column
+    if ac:
+        print(f"[DEBUG] arrow_column: w={ac.width()} h={ac.height()} "
+              f"offset_y={ac._offset_y} line_h={ac._line_h}", flush=True)
+
+    bd = panel._bian_drawer
+    if bd:
+        print(f"[DEBUG] bian_drawer: line_h={bd.line_h} "
+              f"name_area_h={bd.name_area_h} w={bd.width()}", flush=True)
 
     print(f"[DEBUG] min_w={panel.compute_min_width()}", flush=True)
 

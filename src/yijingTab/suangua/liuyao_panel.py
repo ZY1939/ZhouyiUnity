@@ -24,7 +24,7 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
 from PySide6.QtCore import Qt, QTimer, QEvent, QPointF, QRectF
 from PySide6.QtGui import QFontMetrics, QColor, QPen, QPainter
 
-from ..hexagram_drawer import HexagramDrawer, _app_font
+from ..com.hexagram_drawer import HexagramDrawer, _app_font
 from ..CONST_DEFINE_UI import LiuyaoConfig
 from ...settings.config_manager import config_manager
 from ...algorithms.liuyao import (analyze_gua, get_fushen, get_gua_type_tags,
@@ -40,8 +40,8 @@ from ...algorithms.wuxingTools import (
     compact_liuqin, get_wuxing_base_color, get_liushen_fill,
     get_liuqin,
 )
-from ..bagua import BINARY_TO_GUA
-from ..hexagram_loader import load_all_gua
+from ..com.bagua import BINARY_TO_GUA
+from ..com.hexagram_loader import load_all_gua
 
 # ── 从 common 导入公共组件 ──
 from .common import (_LineMarker, is_light_color, build_interpretation)
@@ -129,7 +129,7 @@ class _NayinLabel(QWidget):
         self._font_size = font_size
         self.setFixedHeight(name_area_h + 6 * line_h)
 
-    def set_border_width(self, px: int):
+    def set_border_width(self, px: float):
         self._border_width = px
         self._recalc_width()
         self.update()
@@ -242,7 +242,7 @@ class _FushenLabel(QWidget):
         self._font_size = font_size
         self.setFixedHeight(name_area_h + 6 * line_h)
 
-    def set_border_width(self, px: int):
+    def set_border_width(self, px: float):
         self._border_width = px
         self._recalc_width()
         self.update()
@@ -562,6 +562,8 @@ class LiuyaoPanel(QWidget):
         self._arrow_color_ke = LiuyaoConfig.arrow_color_ke
         self._arrow_color_sheng = LiuyaoConfig.arrow_color_sheng
         self._arrow_badge_padding = LiuyaoConfig.arrow_badge_padding
+        self._biangua_dongyao_yang = LiuyaoConfig.biangua_dongyao_yang
+        self._biangua_dongyao_yin = LiuyaoConfig.biangua_dongyao_yin
 
         # ── 精简模式 ──
         self._compact = config_manager.get("general", "liuyao_compact")
@@ -829,6 +831,7 @@ class LiuyaoPanel(QWidget):
         self._interpret_label = QLabel("")
         self._interpret_label.setWordWrap(True)
         self._interpret_label.setTextFormat(Qt.TextFormat.RichText)
+        self._interpret_label.setStyleSheet("background: transparent;")
         interp_layout.addWidget(self._interpret_label)
         root.addWidget(self._interpret_frame)
 
@@ -986,6 +989,13 @@ class LiuyaoPanel(QWidget):
             self._bian_drawer.set_lines(yang)
             self._bian_drawer.set_disabled_look(False)
             self._bian_drawer.set_custom_title(f"变·{bian_name}")
+            # 动爻位置加深着色
+            overrides = {}
+            for cl in self._changing_lines:
+                idx = cl - 1
+                is_yang = bian_binary[idx] == "1"
+                overrides[idx] = self._biangua_dongyao_yang if is_yang else self._biangua_dongyao_yin
+            self._bian_drawer.set_line_color_overrides(overrides)
 
         # 箭头
         if self._arrow_column:
@@ -1198,6 +1208,8 @@ class LiuyaoPanel(QWidget):
         if self._liuyao_result:
             self._update_liushen_markers(self._liuyao_result)
             self._update_fushen_items()
+        if self._ben_data and self._changing_lines is not None:
+            self._update_dongyao_markers(self._ben_data, self._changing_lines)
 
     def set_fs_name(self, offset: int):
         self._fs_name = offset
@@ -1250,7 +1262,9 @@ class LiuyaoPanel(QWidget):
                   fs_offset_dongyao: int | None = None,
                   fs_offset_nayin: int | None = None,
                   arrow_width_scale: float | None = None,
-                  arrow_badge_padding: int | None = None):
+                  arrow_badge_padding: int | None = None,
+                  biangua_dongyao_yang: str | None = None,
+                  biangua_dongyao_yin: str | None = None):
         if gap_liuyao_left is not None:
             self._gap_liuyao_left = gap_liuyao_left
         if gap_liuyao_right is not None:
@@ -1293,6 +1307,10 @@ class LiuyaoPanel(QWidget):
                 self._arrow_column.set_arrow_width_scale(arrow_width_scale)
         if arrow_badge_padding is not None:
             self._arrow_badge_padding = arrow_badge_padding
+        if biangua_dongyao_yang is not None:
+            self._biangua_dongyao_yang = biangua_dongyao_yang
+        if biangua_dongyao_yin is not None:
+            self._biangua_dongyao_yin = biangua_dongyao_yin
 
         self._recalc_all_marker_widths()
 

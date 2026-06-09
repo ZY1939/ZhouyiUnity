@@ -13,8 +13,11 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
 from PySide6.QtCore import Qt, QRectF, QPointF
 from PySide6.QtGui import QFont, QFontMetrics, QPainter, QColor, QPen
 
-from ..hexagram_drawer import _app_font
-from ..dot_button import DotButton
+import re
+
+from ..com.hexagram_drawer import _app_font
+from ..com.dot_button import DotButton
+from ..CONST_DEFINE_UI import InterpretConfig
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -243,9 +246,34 @@ def line_name(binary: str, pos: int) -> str:
 #  卦辞/爻辞 解读 HTML 构建
 # ═══════════════════════════════════════════════════════════════
 
-# 方块颜色
-BLUE_BG = "rgb(59, 86, 189)"
-ORANGE_BG = "rgb(211, 107, 0)"
+# 方块颜色（从 InterpretConfig 读取）
+# hex 格式: 爻辞蓝色系 / 卦辞橙色系
+BLUE_BG = InterpretConfig.blue_bg        # #3b56bd  rgb(59, 86, 189)
+ORANGE_BG = InterpretConfig.orange_bg     # #d36b00  rgb(211, 107, 0)
+
+
+def _readable_text_color(bg_hex: str, gray: bool) -> str:
+    """根据块背景色自动选择可读文字颜色
+    gray=1: 中灰 #808080（深浅底均可见）
+    gray=0: 亮底→深色 #1d1d1f, 暗底→白色 #ffffff
+    """
+    if gray:
+        return "#808080"
+    return "#1d1d1f" if is_light_color(bg_hex) else "#ffffff"
+
+
+def _color_to_rgba(color: str, opacity: float) -> str:
+    """将 hex/rgb 颜色转为 rgba(R, G, B, A)，A = opacity * 255"""
+    if color.startswith("#"):
+        h = color.lstrip("#")
+        r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+    else:
+        m = re.match(r'rgb\((\d+),\s*(\d+),\s*(\d+)\)', color)
+        if not m:
+            return color
+        r, g, b = int(m.group(1)), int(m.group(2)), int(m.group(3))
+    a = int(opacity * 255)
+    return f"rgba({r}, {g}, {b}, {a})"
 
 
 def _find_line_by_attribute(lines_data: list[dict], attr_name: str) -> dict | None:
@@ -258,31 +286,51 @@ def _find_line_by_attribute(lines_data: list[dict], attr_name: str) -> dict | No
 
 def _build_yaoci_html(font_size: int, attr: str, scripture: str, xiang: str) -> str:
     """构建爻辞 HTML（蓝色方块）"""
+    ts = InterpretConfig.text_style
+    fs_main = font_size + ts["yaoci"]["fs"]
+    fs_xiang = font_size + ts["xiang"]["fs"]
+    bg = InterpretConfig.blue_bg
+    # 爻辞正文: gray 控制颜色, bold 控制经文内容
+    text_c = _readable_text_color(bg, ts["yaoci"]["gray"])
+    content = f"<b>{scripture}</b>" if ts["yaoci"]["bold"] else scripture
     parts = [
-        f'<span style="font-size:{font_size}px; color:#ffffff;">'
-        f'<b>{attr}</b>&nbsp;&nbsp;{scripture}'
+        f'<span style="font-size:{fs_main}px; color:{text_c};">'
+        f'<b>{attr}</b>&nbsp;&nbsp;{content}'
         f'</span>',
     ]
+    # 象曰
     if xiang:
+        xiang_c = _readable_text_color(bg, ts["xiang"]["gray"])
+        xiang_content = f"<b>{xiang}</b>" if ts["xiang"]["bold"] else xiang
         parts.append(
-            f'<br><span style="font-size:{font_size - 1}px; color:#d0d5f0;">'
-            f'象曰&nbsp;&nbsp;{xiang}'
+            f'<br><span style="font-size:{fs_xiang}px; color:{xiang_c};">'
+            f'<b>象曰</b>&nbsp;&nbsp;{xiang_content}'
             f'</span>'
         )
     return ''.join(parts)
 
 
-def _build_guaci_html(font_size: int, scripture: str, tuan: str) -> str:
+def _build_guaci_html(font_size: int, scripture: str, daxiang: str) -> str:
     """构建卦辞 HTML（橙色方块）"""
+    ts = InterpretConfig.text_style
+    fs_main = font_size + ts["yaoci"]["fs"]
+    fs_xiang = font_size + ts["xiang"]["fs"]
+    bg = InterpretConfig.orange_bg
+    # 卦辞正文
+    text_c = _readable_text_color(bg, ts["yaoci"]["gray"])
+    content = f"<b>{scripture}</b>" if ts["yaoci"]["bold"] else scripture
     parts = [
-        f'<span style="font-size:{font_size}px; color:#ffffff;">'
-        f'<b>卦辞</b>&nbsp;&nbsp;{scripture}'
+        f'<span style="font-size:{fs_main}px; color:{text_c};">'
+        f'<b>卦辞</b>&nbsp;&nbsp;{content}'
         f'</span>',
     ]
-    if tuan:
+    # 象曰
+    if daxiang:
+        xiang_c = _readable_text_color(bg, ts["xiang"]["gray"])
+        xiang_content = f"<b>{daxiang}</b>" if ts["xiang"]["bold"] else daxiang
         parts.append(
-            f'<br><span style="font-size:{font_size - 1}px; color:#ffe0c0;">'
-            f'彖曰&nbsp;&nbsp;{tuan}'
+            f'<br><span style="font-size:{fs_xiang}px; color:{xiang_c};">'
+            f'<b>象曰</b>&nbsp;&nbsp;{xiang_content}'
             f'</span>'
         )
     return ''.join(parts)
@@ -293,7 +341,7 @@ def build_interpretation(ben_data: dict, changing_lines: list[int], font_size: i
     根据动爻数量构建卦辞/爻辞解读 HTML
 
     1 动爻 → 爻辞+象曰（蓝色）
-    0 动爻 → 卦辞+彖曰（橙色）
+    0 动爻 → 卦辞+象曰（橙色）
     >1 动爻 → 调用 get_judgment_line (南师多动爻断法) 选爻后展示爻辞/卦辞
 
     Args:
@@ -315,13 +363,17 @@ def build_interpretation(ben_data: dict, changing_lines: list[int], font_size: i
     except ValueError:
         return None
 
+    html = None
+    bg_color = None
+
     if result == 0:
-        # ── 静卦 → 卦辞 + 彖曰（橙色）──
+        # ── 静卦 → 卦辞 + 象曰（橙色）──
         scripture = ben_data.get("scripture", "")
-        tuan = ben_data.get("tuan", "")
-        if not scripture and not tuan:
+        daxiang = ben_data.get("daxiang", "")
+        if not scripture and not daxiang:
             return None
-        return _build_guaci_html(font_size, scripture, tuan), ORANGE_BG
+        html = _build_guaci_html(font_size, scripture, daxiang)
+        bg_color = InterpretConfig.orange_bg
 
     elif 1 <= result <= 6:
         # ── 具体爻辞 + 象曰（蓝色）──
@@ -337,7 +389,7 @@ def build_interpretation(ben_data: dict, changing_lines: list[int], font_size: i
             line_info.get("scripture", ""),
             line_info.get("xiang", ""),
         )
-        return html, BLUE_BG
+        bg_color = InterpretConfig.blue_bg
 
     elif result == 7:
         # 用九（乾卦六爻皆动）
@@ -352,9 +404,9 @@ def build_interpretation(ben_data: dict, changing_lines: list[int], font_size: i
             html = _build_guaci_html(
                 font_size,
                 ben_data.get("scripture", ""),
-                ben_data.get("tuan", ""),
+                ben_data.get("daxiang", ""),
             )
-        return html, BLUE_BG
+        bg_color = InterpretConfig.blue_bg
 
     elif result == 8:
         # 用六（坤卦六爻皆动）
@@ -369,20 +421,43 @@ def build_interpretation(ben_data: dict, changing_lines: list[int], font_size: i
             html = _build_guaci_html(
                 font_size,
                 ben_data.get("scripture", ""),
-                ben_data.get("tuan", ""),
+                ben_data.get("daxiang", ""),
             )
-        return html, BLUE_BG
+        bg_color = InterpretConfig.blue_bg
 
     elif result == 9:
-        # 变卦彖辞 — 无变卦数据，展示本卦彖辞
+        # 变卦象辞 — 无变卦数据，展示本卦大象
         html = _build_guaci_html(
             font_size,
             ben_data.get("scripture", ""),
-            ben_data.get("tuan", ""),
+            ben_data.get("daxiang", ""),
         )
-        return html, ORANGE_BG
+        bg_color = InterpretConfig.orange_bg
 
-    return None
+    if html is None:
+        return None
+
+    # ── 保存原始 hex（透明度转换前，供断法颜色判断）──
+    bg_hex = bg_color
+
+    # ── 应用透明度 ──
+    if InterpretConfig.opacity < 1.0:
+        bg_color = _color_to_rgba(bg_color, InterpretConfig.opacity)
+
+    # ── 可选断法行 ──
+    ts_duanfa = InterpretConfig.text_style["duanfa"]
+    if ts_duanfa["show"]:
+        fs_duanfa = font_size + ts_duanfa["fs"]
+        duanfa_c = _readable_text_color(bg_hex, ts_duanfa["gray"])
+        reason_text = f"<b>{reason}</b>" if ts_duanfa["bold"] else reason
+        duanfa_html = (
+            f'<span style="font-size:{fs_duanfa}px; color:{duanfa_c};">'
+            f'<b>断法</b>&nbsp;&nbsp;{reason_text}'
+            f'</span><br>'
+        )
+        html = duanfa_html + html
+
+    return html, bg_color
 
 
 # ═══════════════════════════════════════════════════════════════

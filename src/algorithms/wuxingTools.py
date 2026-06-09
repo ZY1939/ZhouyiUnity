@@ -14,6 +14,7 @@
   WUXING_BASE_COLORS  → {五行: 阳色}         由 WUXING_COLORS 生成
 
 导出函数：
+  get_wangxiangxiuqiu(main, slave) → str   旺相休囚死
   get_liuqin(palace_wuxing, dizhi) → str
   get_wuxing_color_by_trigram(gua_name) → str
   get_wuxing_color_by_xiantian(num) → str
@@ -148,6 +149,45 @@ X_COLOR = "#3498db"
 # ═══════════════════════════════════════════════════════════════
 #  公开函数
 # ═══════════════════════════════════════════════════════════════
+
+def get_wangxiangxiuqiu(main: str, slave: str) -> str:
+    """
+    旺相休囚死 — 以 main 五行为月建（当令），判断 slave 五行的旺衰状态
+
+    规则：
+      同我者 → 旺     main 同 slave
+      生我者 → 相     main 生 slave
+      我生者 → 休     slave 生 main
+      我克者 → 囚     slave 克 main
+      克我者 → 死     main 克 slave
+
+    Args:
+        main:  月建五行（金/木/水/火/土），当令的一方
+        slave: 待测五行（金/木/水/火/土）
+
+    Returns:
+        str: "旺"/"相"/"休"/"囚"/"死"，无法判定返回空串
+
+    Examples:
+        get_wangxiangxiuqiu("木", "火") → "相"   （春木当令→木生火→火相）
+        get_wangxiangxiuqiu("木", "木") → "旺"   （同气→旺）
+        get_wangxiangxiuqiu("木", "土") → "死"   （木克土→死）
+    """
+    if not main or not slave or main not in WUXING_SHENG or slave not in WUXING_SHENG:
+        return ""
+
+    if slave == main:
+        return "旺"
+    if WUXING_SHENG.get(main) == slave:
+        return "相"
+    if WUXING_SHENG.get(slave) == main:
+        return "休"
+    if WUXING_KE.get(slave) == main:
+        return "囚"
+    if WUXING_KE.get(main) == slave:
+        return "死"
+    return ""
+
 
 def get_liuqin(palace_wuxing: str, dizhi: str) -> str:
     """

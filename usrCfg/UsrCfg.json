@@ -25,8 +25,8 @@
     "font_size": 17,
     "line_spacing": 1.5,
     "background_image_mode": "fit",
-    "background_image_opacity": 90,
-    "text_color_mode": "auto",
+    "background_image_opacity": 100,
+    "text_color_mode": "manual",
     "text_color": "#ffffff",
     "overlay_enabled": false,
     "overlay_strength": "light",
@@ -44,9 +44,9 @@
   },
   "general": {
     "last_tab_index": 0,
-    "qigua_method": "coin",
+    "qigua_method": "manual",
     "suangua_method": "liuyao",
-    "liuyao_compact": true
+    "liuyao_compact": false
   },
   "window": {
     "lock_aspect_ratio": true,

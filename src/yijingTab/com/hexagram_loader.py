@@ -42,7 +42,7 @@
     - bagua.py: NAME_TO_XIANTIAN（卦名→先天数）, BINARY_TO_GUA（binary→卦数据，由本文件填充）
 
 用法示例:
-    from src.qigua.hexagram_loader import load_all_gua, search_gua, get_gua_by_xiantian
+    from src.yijingTab.com.hexagram_loader import load_all_gua, search_gua, get_gua_by_xiantian
 
     all_gua = load_all_gua()           # {1: {name:"乾", ...}, 2: {...}, ...}
     results = search_gua("乾")          # [(1, {name:"乾", full_name:"乾为天", ...})]
@@ -57,8 +57,9 @@ import json
 
 from .bagua import NAME_TO_XIANTIAN, BINARY_TO_GUA
 
-# ── 默认数据目录（相对路径，随工程移动自适应）──
-_CONTENT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data", "yijing", "content"))
+# ── 默认数据目录（通过 CONST_DEFINE_UI 统一获取，便于目录结构变更时修改）──
+from ..CONST_DEFINE_UI import get_yijing_content_dir
+_CONTENT_DIR = get_yijing_content_dir()
 
 # 缓存：避免重复读盘
 _cache: dict[int, dict] | None = None

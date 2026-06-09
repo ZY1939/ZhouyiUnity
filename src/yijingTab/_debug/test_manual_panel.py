@@ -4,7 +4,7 @@ sys.path.insert(0, ".")
 from PySide6.QtWidgets import QApplication
 from PySide6.QtTest import QTest
 from PySide6.QtCore import Qt, QPoint
-from src.qigua.divination_panel import QiguaPanel
+from src.yijingTab.qigua.divination_panel import QiguaPanel
 
 app = QApplication(sys.argv)
 

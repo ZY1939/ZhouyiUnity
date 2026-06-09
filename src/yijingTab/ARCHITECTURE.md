@@ -1,6 +1,6 @@
-# 起卦工具包架构文档
+# 易经Tab 架构文档
 
-> 基于 2026-06-09 项目记忆 + 实际引用分析生成（最后更新：2026-06-09）
+> 基于 2026-06-09 项目记忆 + 实际引用分析生成（最后更新：2026-06-09 目录重构）
 
 ---
 
@@ -17,56 +17,42 @@
 ## 文件分层
 
 ```
-src/qigua/
+src/yijingTab/
 ├── __init__.py              # ✅ 包导出：QiguaPanel, GuaResult, case CRUD
+├── CONST_DEFINE_UI.py       # ✅ QiguaConfig / SuanguaConfig / MeihuaConfig 参数集中管理
 │
-├── [核心层] 纯计算，零 UI 依赖
-│   ├── bagua.py             # ✅ 先天八卦常量 + GuaResult 数据类
-│   ├── hexagram_calc.py     # ✅ 三位数→卦 / 六爻→卦 / 阴阳→卦 核心计算
-│   ├── hexagram_loader.py   # ✅ 读取 content/*.jsonc，64卦查询 + 缓存
-│   └── hexagram_painter.py  # 🔮 画卦接口空壳（GuaPainter.draw_gua/clear）
-│                              └─ 仅被 🗑️ result_view.py 引用，等待新 UI 接入
+├── com/                     # ✅ 通用组件（被 qigua + suangua 共享引用）
+│   ├── __init__.py            导出 HexagramDrawer, DotButton
+│   ├── hexagram_drawer.py     HexagramDrawer — 卦图绘制（QPainter）
+│   ├── dot_button.py          DotButton — 圆点选择按钮
+│   ├── bagua.py               ✅ 先天八卦常量 + GuaResult 数据类
+│   ├── hexagram_calc.py       ✅ 三位数→卦 / 六爻→卦 / 阴阳→卦 核心计算
+│   └── hexagram_loader.py     ✅ 读取 content/*.jsonc，64卦查询 + 缓存
 │
-├── [UI 层] 主面板
-│   ├── divination_panel.py  # ✅ QiguaPanel 起卦主面板（~2600行）
-│   │   │                     整合卦图 + 4种输入 + 结果 + Lock + 弹窗 + 算卦面板集成
-│   │   ├── _FixedWidthCheckBox   QCheckBox 子类 — sizeHint 中加入额外宽度（对齐方案）
-│   │   ├── _GuaPickerPopup       64卦弹出选择窗口
-│   │   └── 引用的外部组件 ↓
-│   │
-│   └── suangua/             # ✅ 算卦面板（梅花易数/六爻断卦）
-│       ├── __init__.py        导出 SuanguaPanel
-│       ├── suangua_panel.py   算卦主面板（header: 算卦标题+梅花/六爻dot+时间显示）
-│       │                       时间管理：共享干支时间 → 梅花/六爻子面板
-│       ├── meihua_panel.py    梅花面板（本/互/变三卦 + 体用标注 + 爻辞解读）
-│       │                       _LineMarker — 共享标注组件（badge/outlined/normal 模式）
-│       ├── liuyao_panel.py    六爻面板（主卦 + 六神/世应/卦图/动爻/纳音 5列标注）
-│       │                       _NayinLabel — 纳音标注（五行彩色边框）
-│       │                       _TimePickerDialog — 双模式时间选择器（天干地支/阳历）
-│       └── _debug/            调试脚本（test_liuyao.py, test_header_alignment.py）
+├── qigua/                   # ✅ 起卦面板专用
+│   ├── __init__.py            导出 QiguaPanel, GuaResult, case CRUD
+│   ├── divination_panel.py    QiguaPanel 起卦主面板（~2600行）
+│   │   │                      整合卦图 + 4种输入 + 结果 + Lock + 弹窗 + 算卦面板集成
+│   │   ├── _FixedWidthCheckBox   QCheckBox 子类
+│   │   └── _GuaPickerPopup       64卦弹出选择窗口
+│   ├── countdown_timer.py     ✅ CountdownDialog — 10秒随机倒计时弹窗
+│   ├── stopwatch_timer.py     ✅ StopwatchDialog — 秒表计时弹窗
+│   ├── hexagram_painter.py    🔮 画卦接口空壳
+│   └── case_manager.py        🔮 案例 CRUD 完整实现 → usrCfg/divination_cases.json
 │
-├── [UI 组件] 被 divination_panel / suangua 引用
-│   ├── hexagram_drawer.py   # ✅ HexagramDrawer — 卦图绘制（QPainter）
-│   ├── dot_button.py        # ✅ DotButton — 圆点选择按钮（共享组件）
-│   ├── countdown_timer.py   # ✅ CountdownDialog — 10秒随机倒计时弹窗
-│   ├── stopwatch_timer.py   # ✅ StopwatchDialog — 秒表计时弹窗
-│   └── CONST_DEFINE_UI.py   # ✅ QiguaConfig / SuanguaConfig / MeihuaConfig 参数集中管理
+├── suangua/                 # ✅ 算卦面板（梅花易数/六爻断卦）
+│   ├── __init__.py            导出 SuanguaPanel
+│   ├── suangua_panel.py       算卦主面板（header: 算卦标题+梅花/六爻dot+时间显示）
+│   ├── meihua_panel.py        梅花面板（本/互/变三卦 + 体用标注 + 爻辞解读）
+│   ├── liuyao_panel.py        六爻面板（主卦 + 六神/世应/卦图/动爻/纳音 5列标注）
+│   ├── common.py              公共工具（_LineMarker、干支历法、时间选择、卦辞解读）
+│   └── _debug/                调试脚本
 │
-├── [数据层] 持久化存储
-│   └── case_manager.py      # 🔮 案例 CRUD 完整实现 → usrCfg/divination_cases.json
-│                              └─ 被 __init__.py 导出，但尚未被任何 UI 调用
-│
-├── [遗留文件] 已被 divination_panel 内联取代，无其他文件引用
-│   ├── lines_input.py       # 🗑️ 旧 CoinYarrowWidget（→ divination_panel._make_lines_panel）
-│   ├── manual_input.py      # 🗑️ 旧 ManualInputWidget（→ divination_panel._make_manual_panel）
-│   ├── number_input.py      # 🗑️ 旧 ThreeNumberWidget（→ divination_panel._make_three_panel）
-│   └── result_view.py       # 🗑️ 旧 ResultDisplay（→ divination_panel._build_footer）
-│
-└── [测试]
-    ├── test_gua_picker.py      # 🧪 64卦弹窗崩溃修复验证（5项自动化测试）
-    └── _debug/
-        └── test_manual_panel.py  # 🧪 手工面板交互回归测试（10类30+子场景）
-                                   #    单动爻/Lock/卦图翻转/动爻联动/suangua转发/梅花切换/对齐验证
+└── _debug/                  # 🧪 yijingTab 级测试
+    ├── test_gua_picker.py      64卦弹窗崩溃修复验证
+    ├── test_alignment.py       对齐验证
+    ├── test_grid_row_height.py 网格行高验证
+    └── test_manual_panel.py    手工面板交互回归测试
 ```
 
 ---
@@ -97,7 +83,7 @@ src/qigua/
 | `case_manager.py` | `__init__.py` 已导出 5 个 CRUD 函数，但尚无 UI 调用 | 案例持久化 → `usrCfg/divination_cases.json`，UUID 标识，支持增删改查清空 |
 | `hexagram_painter.py` | `GuaPainter.draw_gua()` / `clear()` 空壳，仅被 🗑️ result_view 引用 | 后续在 QWidget 上绘制爻象图（非文字符号，而是图形化卦象） |
 
-> **case_manager 接入提示**：在 `divination_panel._show_result()` 末尾调用 `save_case(result, method=self._current_method, notes="")` 即可打通案例保存。`__init__.py` 已导出函数，外部只需 `from src.qigua import save_case, load_cases`。
+> **case_manager 接入提示**：在 `divination_panel._show_result()` 末尾调用 `save_case(result, method=self._current_method, notes="")` 即可打通案例保存。`__init__.py` 已导出函数，外部只需 `from src.yijingTab import save_case, load_cases`。
 
 ### 🗑️ 遗留文件（可安全删除）
 
@@ -511,3 +497,12 @@ Lock 和 单动爻 在同一列 (col2)，天然水平对齐。所有字号 (15-1
 | `arrow_color_ke` | `#e74c3c` (红) | 克 |
 | `arrow_color_sheng` | `#27ae60` (绿) | 生 |
 | `arrow_badge_padding` | 1 | badge 内边距 px |
+| `biangua_dongyao_yang` | `#c0392b` | 变卦动爻阳爻加深色 |
+| `biangua_dongyao_yin` | `#1f618d` | 变卦动爻阴爻加深色 |
+
+#### 变卦动爻着色
+
+- 变卦中动爻位置的爻线使用**加深颜色**，与普通爻线区分
+- 阳爻加深：`#c0392b`（深红），阴爻加深：`#1f618d`（深蓝）
+- 实现：`HexagramDrawer.set_line_color_overrides({line_idx: css_color, ...})`
+- 逐爻覆盖优先于 wuxing_mode / disabled_mode / 默认颜色

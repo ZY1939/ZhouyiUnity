@@ -12,8 +12,8 @@ from PySide6.QtGui import QFontMetrics
 
 app = QApplication(sys.argv)
 
-from src.qigua.suangua.liuyao_panel import LiuyaoPanel
-from src.qigua.hexagram_drawer import _app_font
+from src.yijingTab.suangua.liuyao_panel import LiuyaoPanel
+from src.yijingTab.com.hexagram_drawer import _app_font
 
 # 测试多个字号
 for font_size in [14, 16, 20]:

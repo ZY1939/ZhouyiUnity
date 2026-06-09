@@ -161,10 +161,10 @@ class LiuyaoConfig:
     # badge 轮廓比文字大的内边距（px），六神/世应/动爻共用
     badge_padding = 0
 
-    # 纳音边框线宽（px）
-    nayin_border_width = 1
+    # 六亲+纳音边框线宽（px）
+    nayin_border_width = 2
     # 纳音文字到边框的内边距（px）
-    nayin_padding = 2
+    nayin_padding = 1
 
     # 六神字号偏移（相对全局 font_size，正=更大）
     fs_offset_liushen = 0
@@ -186,3 +186,53 @@ class LiuyaoConfig:
     arrow_color_sheng = "#27ae60"   # 生（绿色）
     # 生克文字 badge 内边距（px），badge = 正方形 (side = fm_height + 2 * padding)
     arrow_badge_padding = 1
+
+    # === 变卦动爻加深颜色 ===
+    # 变卦中动爻位置的爻线用加深色，与普通爻线区分
+    biangua_dongyao_yang = "#e40c0c"  # 阳爻加深（深红）
+    biangua_dongyao_yin = "#2b25d4"   # 阴爻加深（深蓝）
+
+
+class InterpretConfig:
+    """@算卦面板：卦辞/爻辞解读文本框 UI 参数（梅花面板和六爻面板共用）
+
+    控制底部蓝色/橙色解读方块的透明度、颜色、字号和断法行显示。
+    """
+
+    # ── 背景颜色（hex 格式）──
+    # 爻辞方块背景色（蓝色系）        #3b56bd  rgb(59, 86, 189)
+    blue_bg = "#3b56bd"
+    # 卦辞方块背景色（橙色系）        #d36b00  rgb(211, 107, 0)
+    orange_bg = "#d36b00"
+
+    # ── 透明度 ──
+    # 文本框背景透明度（0.0-1.0，1.0=完全不透明，0.5=半透明）
+    opacity = 0.6
+
+    # ── 文字样式（"yaoci"=爻辞/卦辞, "xiang"=象曰, "duanfa"=断法）──
+    # fs:   字号偏移（相对全局 font_size，正=更大）
+    # gray: 1=灰色 #999999, 0=白色
+    # bold: 1=加粗, 0=不加粗
+    # show: 1=显示, 0=隐藏（仅 duanfa）
+    text_style = {
+        "yaoci": {"fs": 1,  "gray": 0, "bold": 1},
+        "xiang":  {"fs": 1, "gray": 0, "bold": 1},
+        "duanfa": {"fs": 1, "gray": 0, "bold": 0, "show": 1},
+    }
+
+
+# ═══════════════════════════════════════════════════════════════
+# 数据路径
+# ═══════════════════════════════════════════════════════════════
+
+def get_yijing_content_dir() -> str:
+    """
+    返回 64卦 JSONC 数据目录的绝对路径。
+
+    基于 config_manager.get_project_root()，兼容 dev 和 PyInstaller frozen 模式。
+    当目录结构变化时只需修改此函数中的相对路径。
+    """
+    import os
+    from ..settings.config_manager import get_project_root
+    root = get_project_root()
+    return os.path.join(root, "src", "data", "yijing", "content")
